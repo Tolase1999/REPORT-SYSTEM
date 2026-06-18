@@ -52585,6 +52585,93 @@ function KU({
             value: parseInt(String(l.visitation || 0)),
             accent: "text-emerald-600"
           })]
+        }), m.jsxs("div", {
+          className: "bg-gray-50 rounded-xl px-4 py-3",
+          children: [m.jsx("p", {
+            className: "text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2",
+            children: "MS Activity Breakdown"
+          }), isPreviewFieldVisible("MS", "swap") && m.jsxs("div", {
+            className: "flex items-center justify-between py-1.5 border-b border-gray-100 last:border-0",
+            children: [m.jsx("span", {
+              className: "text-[11px] font-semibold text-gray-500",
+              children: "Swap Count"
+            }), m.jsx("span", {
+              className: "text-xs font-bold text-pink-600",
+              children: parseInt(String(l.swapCount || 0))
+            })]
+          }), isPreviewFieldVisible("MS", "binding") && m.jsxs("div", {
+            className: "flex items-center justify-between py-1.5 border-b border-gray-100 last:border-0",
+            children: [m.jsx("span", {
+              className: "text-[11px] font-semibold text-gray-500",
+              children: "POS Location Binding"
+            }), m.jsx("span", {
+              className: "text-xs font-bold text-purple-600",
+              children: _bindingVal
+            })]
+          }), isPreviewFieldVisible("MS", "enrolled") && m.jsxs("div", {
+            className: "flex items-center justify-between py-1.5 border-b border-gray-100 last:border-0",
+            children: [m.jsx("span", {
+              className: "text-[11px] font-semibold text-gray-500",
+              children: "Merchant Activity (Enrolled)"
+            }), m.jsx("span", {
+              className: "text-xs font-bold text-blue-600",
+              children: parseInt(String(l.enrolled || 0))
+            })]
+          }), isPreviewFieldVisible("MS", "profileCount") && m.jsxs("div", {
+            className: "flex items-center justify-between py-1.5 border-b border-gray-100 last:border-0",
+            children: [m.jsx("span", {
+              className: "text-[11px] font-semibold text-gray-500",
+              children: "Profile Collection"
+            }), m.jsx("span", {
+              className: "text-xs font-bold text-indigo-600",
+              children: parseInt(String(l.profileCount || 0))
+            })]
+          }), isPreviewFieldVisible("MS", "visitation") && m.jsxs("div", {
+            className: "flex items-center justify-between py-1.5 border-b border-gray-100 last:border-0",
+            children: [m.jsx("span", {
+              className: "text-[11px] font-semibold text-gray-500",
+              children: "Visitations"
+            }), m.jsx("span", {
+              className: "text-xs font-bold text-emerald-600",
+              children: parseInt(String(l.visitation || 0))
+            })]
+          }), isPreviewFieldVisible("MS", "terminalSNs") && m.jsxs("div", {
+            className: "flex items-center justify-between py-1.5 border-b border-gray-100 last:border-0",
+            children: [m.jsx("span", {
+              className: "text-[11px] font-semibold text-gray-500",
+              children: "Terminal S/Ns Count"
+            }), m.jsx("span", {
+              className: "text-xs font-bold text-gray-700",
+              children: (l.terminalSNs || []).length
+            })]
+          }), isPreviewFieldVisible("MS", "swapMerchantIds") && m.jsxs("div", {
+            className: "flex items-center justify-between py-1.5 border-b border-gray-100 last:border-0",
+            children: [m.jsx("span", {
+              className: "text-[11px] font-semibold text-gray-500",
+              children: "Swap Merchant IDs Count"
+            }), m.jsx("span", {
+              className: "text-xs font-bold text-gray-700",
+              children: (l.swapMerchantIds || []).length
+            })]
+          }), isPreviewFieldVisible("MS", "merchantIds") && m.jsxs("div", {
+            className: "flex items-center justify-between py-1.5 border-b border-gray-100 last:border-0",
+            children: [m.jsx("span", {
+              className: "text-[11px] font-semibold text-gray-500",
+              children: "Merchant IDs Count"
+            }), m.jsx("span", {
+              className: "text-xs font-bold text-gray-700",
+              children: (l.merchantIds || []).length
+            })]
+          }), isPreviewFieldVisible("MS", "total") && m.jsxs("div", {
+            className: "flex items-center justify-between py-2 mt-1 bg-pink-50 rounded-lg px-2",
+            children: [m.jsx("span", {
+              className: "text-[11px] font-bold text-gray-700 uppercase",
+              children: "Activity Total"
+            }), m.jsxs("span", {
+              className: "text-sm font-extrabold text-pink-600",
+              children: [u, " (Swap + Binding + Merch + Profile)"]
+            })]
+          })]
         }), (isPreviewFieldVisible("MS", "terminalSNs") && l.terminalSNs?.length) || (isPreviewFieldVisible("MS", "swapMerchantIds") && l.swapMerchantIds?.length) || (isPreviewFieldVisible("MS", "merchantIds") && l.merchantIds?.length) ? m.jsxs("div", {
           className: "bg-gray-50 rounded-xl px-4 py-3",
           children: [m.jsx("p", {
