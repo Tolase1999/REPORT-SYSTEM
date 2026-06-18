@@ -25992,12 +25992,43 @@ async function VO(e, t) {
   if (r) throw new Error(`Failed to update user: ${r.message}`)
 }
 async function GO(e) {
+  // First, try the RPC. If it fails due to FK constraint on reports,
+  // fall back to reassigning the user's reports to a sentinel user, then retry.
   const {
     error: t
   } = await It.rpc("delete_app_user", {
     p_id: e
   });
-  if (t) throw new Error(`Failed to delete user: ${t.message}`)
+  if (t) {
+    const msg = t.message || "";
+    // Foreign key violation on reports — handle gracefully
+    if (msg.includes("foreign key") || msg.includes("23503") || msg.includes("reports_user_id_fkey") || msg.includes("violates")) {
+      // Option A: Reassign all reports from this user to a system/sentinel user.
+      // We try to find an admin user to reassign to; if none, we null out the user_id.
+      try {
+        // Find an admin to reassign reports to (preserves report history)
+        const { data: admins } = await It.from("users").select("id").eq("role", "admin").limit(1);
+        const adminId = admins && admins.length > 0 ? admins[0].id : null;
+        if (adminId) {
+          const { error: reassignErr } = await It.from("reports").update({ user_id: adminId }).eq("user_id", e);
+          if (reassignErr) throw new Error(`Failed to reassign reports: ${reassignErr.message}`);
+        } else {
+          // No admin found — set user_id to null on their reports
+          const { error: nullErr } = await It.from("reports").update({ user_id: null }).eq("user_id", e);
+          if (nullErr) throw new Error(`Failed to clear report references: ${nullErr.message}`);
+        }
+        // Also clear supervisor_id references on other users
+        await It.from("users").update({ supervisor_id: null }).eq("supervisor_id", e);
+        // Retry the delete
+        const { error: retryErr } = await It.rpc("delete_app_user", { p_id: e });
+        if (retryErr) throw new Error(`Failed to delete user after reassigning reports: ${retryErr.message}`);
+      } catch (reassignError) {
+        throw new Error(`Cannot delete user: ${reassignError.message}. Please remove their reports first or contact admin.`)
+      }
+    } else {
+      throw new Error(`Failed to delete user: ${msg}`)
+    }
+  }
 }
 
 function ng(e) {
@@ -34932,7 +34963,7 @@ ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin','manag
         }
       }
     }, he = async fe => {
-      if (confirm("Delete this user?")) try {
+      if (confirm("Delete this user?\n\nIf this user has submitted reports, their reports will be reassigned to an admin (to preserve report history), then the user will be deleted.")) try {
         await GO(fe), await U()
       } catch (pe) {
         alert(pe.message)
