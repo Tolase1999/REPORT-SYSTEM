@@ -35690,6 +35690,8 @@ function ptmComponent() {
 
   const msSystemCols = MS_SYSTEM_COLUMNS;
   const msCustomTasks = tasks.filter(t => (t.team === "MS" || t.team === "Both") && t.active !== !1 && !t.system);
+  const moSystemCols = MO_SYSTEM_COLUMNS;
+  const moCustomTasks = tasks.filter(t => (t.team === "MO" || t.team === "Both") && t.active !== !1 && !t.system);
 
   const renderToggle = (team, key, label, desc) => {
     const checked = cfg[team][key] !== !1;
@@ -35751,7 +35753,42 @@ function ptmComponent() {
     }), loading ? m.jsx("p", {
       className: "text-sm text-gray-400 text-center py-6",
       children: "Loading tasks..."
-    }) : m.jsxs(Je, {
+    }) : m.jsxs(m.Fragment, {
+      children: [m.jsxs(Je, {
+      className: "p-5",
+      children: [m.jsxs("h3", {
+        className: "text-sm font-bold text-emerald-700 mb-3 flex items-center gap-2",
+        children: [m.jsx(qi, {
+          className: "text-emerald-600",
+          size: 16
+        }), "MO Report Table Columns"]
+      }), m.jsx("p", {
+        className: "text-[11px] text-gray-400 mb-3",
+        children: "Date, Market, City, MO Name, Visits, and Challenges are always shown. Toggle the POS Activity column groups and custom task columns below:"
+      }), m.jsx("div", {
+        className: "space-y-4",
+        children: [m.jsxs("div", {
+          children: [m.jsx("p", {
+            className: "text-[10px] font-bold text-gray-500 uppercase mb-2",
+            children: "System POS Activity Columns (Smart/TPOS/MPOS/Total each)"
+          }), m.jsx("div", {
+            className: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2",
+            children: moSystemCols.map(col => renderToggle("MO", col.key, col.label, "Built-in POS section"))
+          })]
+        }), moCustomTasks.length > 0 && m.jsxs("div", {
+          children: [m.jsx("p", {
+            className: "text-[10px] font-bold text-gray-500 uppercase mb-2 mt-4",
+            children: "Custom Task Columns"
+          }), m.jsx("div", {
+            className: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2",
+            children: moCustomTasks.map(t => renderToggle("MO", t.id, t.label, `${t.type} · from Form Fields`))
+          })]
+        }), moCustomTasks.length === 0 && m.jsx("p", {
+          className: "text-[11px] text-gray-400 italic mt-2",
+          children: "No custom MO tasks yet. Create them in the Form Fields tab to add as columns."
+        })]
+      })]
+    }), m.jsxs(Je, {
       className: "p-5",
       children: [m.jsxs("h3", {
         className: "text-sm font-bold text-pink-700 mb-3 flex items-center gap-2",
@@ -35796,7 +35833,7 @@ function ptmComponent() {
         className: saved ? "bg-emerald-600" : "bg-cyan-600 hover:bg-cyan-700 text-white font-bold px-6",
         children: [m.jsx(lj, { size: 16, className: "mr-1" }), saved ? "Saved" : "Save Changes"]
       })]
-    })]
+    })]})]
   })
 }
 
@@ -36374,6 +36411,74 @@ function getMSCellValue(reportData, col, allTasks) {
   }
   // number type
   return parseInt(String(customVal || 0)) || 0
+}
+
+// ============================================================================
+// MO preview task column configuration
+// MO table has POS Activity column groups (each with Smart/TPOS/MPOS/Total)
+// plus custom single-column tasks.
+// ============================================================================
+
+const MO_SYSTEM_COLUMNS = [
+  { key: "assigned", label: "Total POS Assigned MS/BD", bg: "#D4EDDA", fg: "#155724" },
+  { key: "linked", label: "Total POS Linked", bg: "#CCE5FF", fg: "#004085" },
+  { key: "swapped", label: "POS Swapped", bg: "#FFF3CD", fg: "#856404" },
+  { key: "stock_new", label: "New Stock", bg: "#E2D9F3", fg: "#4A235A" },
+  { key: "stock_rep", label: "Repaired Stock", bg: "#D1ECF1", fg: "#0C5460" },
+  { key: "stock_rr", label: "R&R Stock", bg: "#FFE5D0", fg: "#7A3200" },
+  { key: "faulty", label: "Faulty", bg: "#F8D7DA", fg: "#721C24" }
+];
+
+// Builds the ordered list of visible POS Activity column groups for the MO table.
+// System columns come first (in their defined order), then custom MO tasks.
+function getVisibleMOColumns(tasks) {
+  const cols = [];
+  // System POS Activity columns (filtered by visibility)
+  MO_SYSTEM_COLUMNS.forEach(sysCol => {
+    if (isPreviewTaskVisible("MO", sysCol.key)) {
+      cols.push({ ...sysCol, isCustom: !1, isPosSection: !0, dataKey: sysCol.key })
+    }
+  });
+  // Custom MO tasks (filtered by visibility) — single-column, not POS sections
+  if (tasks && Array.isArray(tasks)) {
+    tasks.filter(t => (t.team === "MO" || t.team === "Both") && t.active !== !1 && !t.system)
+      .forEach(t => {
+        if (isPreviewTaskVisible("MO", t.id)) {
+          cols.push({
+            key: t.id,
+            label: t.label,
+            bg: "#F0F0F0",
+            fg: "#333333",
+            isCustom: !0,
+            isPosSection: !1,
+            taskId: t.id,
+            taskType: t.type
+          })
+        }
+      })
+  }
+  return cols
+}
+
+// Extracts a cell value for a given MO column from a report's data object.
+// For POS sections, returns the { smart, tpos, mpos, total } object.
+// For custom tasks, returns the scalar value.
+function getMOCellValue(reportData, col, allTasks) {
+  if (col.isPosSection && !col.isCustom) {
+    // POS section: return the full object { smart, tpos, mpos, total }
+    return reportData[col.dataKey] || { smart: 0, tpos: 0, mpos: 0, total: 0 }
+  }
+  if (col.isCustom) {
+    const customVal = reportData.custom && reportData.custom[col.taskId];
+    if (col.taskType === "yesno") {
+      return customVal === "Yes" ? "Y" : customVal === "No" ? "N" : (customVal || "")
+    }
+    if (col.taskType === "textarea" || col.taskType === "mid_list" || col.taskType === "sn_list") {
+      return customVal || ""
+    }
+    return parseInt(String(customVal || 0)) || 0
+  }
+  return ""
 }
 var Fd = {};
 Fd.version = "0.18.5";
@@ -51888,25 +51993,26 @@ function Eh({
       const oe = z.filter(ye => ye.type === "MO");
       if (oe.length) {
         const ye = p.filter(st => (st.team === "MO" || st.team === "Both") && st.active !== !1),
-          Fe = [
-            ["assigned", "Total POS Assigned MS/BD"],
-            ["linked", "Total POS Linked"],
-            ["swapped", "POS Swapped"],
-            ["stock_new", "New Stock"],
-            ["stock_rep", "Repaired Stock"],
-            ["stock_rr", "R&R Stock"],
-            ["faulty", "Faulty"]
-          ],
-          Le = ["Date", "Market", "City", "MO Name", ...Fe.flatMap(([, st]) => [`${st} Smart`, `${st} TPOS`, `${st} MPOS`, `${st} Total`]), "Visitations", "Challenges", ...ye.map(st => st.label)],
+          // Build dynamic MO column list from preview task config
+          moColsAll = getVisibleMOColumns(p),
+          moPosColsEx = moColsAll.filter(c => c.isPosSection),
+          moCustomColsEx = moColsAll.filter(c => c.isCustom),
+          Le = ["Date", "Market", "City", "MO Name",
+            ...moPosColsEx.flatMap(c => [`${c.label} Smart`, `${c.label} TPOS`, `${c.label} MPOS`, `${c.label} Total`]),
+            ...moCustomColsEx.map(c => c.label),
+            "Visitations", "Challenges"],
           tt = oe.map(st => {
             const nt = st.data || {},
               De = Yt => nt[Yt] || {},
               er = l.find(Yt => Yt.id === st.market_id) || st.market || {},
               Bt = d.find(Yt => Yt.id === st.user_id) || st.user || {};
-            return [st.date, er.name || "", er.city || nt.city || "", nt.moName || Bt.name || "", ...Fe.flatMap(([Yt]) => {
-              const Ar = De(Yt);
-              return [Ar.smart || 0, Ar.tpos || 0, Ar.mpos || 0, Ar.total || 0]
-            }), nt.visitation || 0, nt.challenges || "", ...ye.map(Yt => (nt.custom || {})[Yt.id] ?? "")]
+            return [st.date, er.name || "", er.city || nt.city || "", nt.moName || Bt.name || "",
+              ...moPosColsEx.flatMap(c => {
+                const Ar = De(c.dataKey);
+                return [Ar.smart || 0, Ar.tpos || 0, Ar.mpos || 0, Ar.total || 0]
+              }),
+              ...moCustomColsEx.map(c => getMOCellValue(nt, c, p)),
+              nt.visitation || 0, nt.challenges || ""]
           }),
           Ve = Ma.aoa_to_sheet([Le, ...tt]);
         Ve["!cols"] = Le.map(() => ({
@@ -52486,15 +52592,13 @@ function XU({
   onClose: s,
   onExcel: o
 }) {
-  const [l, u] = E.useState("summary"), d = e.filter(_ => _.type === "MO"), h = e.filter(_ => _.type === "MS"), p = [...new Set(e.map(_ => _.date))].sort(), g = n.filter(_ => (_.team === "MO" || _.team === "Both") && _.active !== !1), y = [
-    ["assigned", "Total POS Assigned MS/BD", "#D4EDDA", "#155724"],
-    ["linked", "Total POS Linked", "#CCE5FF", "#004085"],
-    ["swapped", "POS Swapped", "#FFF3CD", "#856404"],
-    ["stock_new", "New Stock", "#E2D9F3", "#4A235A"],
-    ["stock_rep", "Repaired Stock", "#D1ECF1", "#0C5460"],
-    ["stock_rr", "R&R Stock", "#FFE5D0", "#7A3200"],
-    ["faulty", "Faulty", "#F8D7DA", "#721C24"]
-  ].filter(_row => isPreviewFieldVisible("MO", _row[0])), b = [{
+  const [l, u] = E.useState("summary"), d = e.filter(_ => _.type === "MO"), h = e.filter(_ => _.type === "MS"), p = [...new Set(e.map(_ => _.date))].sort(), g = n.filter(_ => (_.team === "MO" || _.team === "Both") && _.active !== !1),
+    // Build dynamic MO column list from preview task config
+    moCols = getVisibleMOColumns(n),
+    // Separate POS-section columns from custom single-column tasks
+    moPosCols = moCols.filter(c => c.isPosSection),
+    moCustomCols = moCols.filter(c => c.isCustom),
+    b = [{
     id: "summary",
     label: "Summary",
     icon: d3,
@@ -52629,7 +52733,7 @@ function XU({
               className: "sticky top-0 z-10",
               children: [m.jsx("tr", {
                 children: m.jsx("td", {
-                  colSpan: 4 + y.length * 4 + 2 + g.length,
+                  colSpan: 4 + moPosCols.length * 4 + moCustomCols.length + 2,
                   className: "text-center font-bold text-sm py-2 px-3 text-black",
                   style: {
                     background: "#92D050",
@@ -52657,15 +52761,23 @@ function XU({
                   rowSpan: 2,
                   className: "border border-black px-2 py-1 text-center font-bold whitespace-nowrap",
                   children: "MO Name"
-                }), y.map(([_, w, S, C]) => m.jsx("th", {
+                }), moPosCols.map(col => m.jsx("th", {
                   colSpan: 4,
                   className: "border border-black px-2 py-1 text-center font-bold",
                   style: {
-                    background: S,
-                    color: C
+                    background: col.bg,
+                    color: col.fg
                   },
-                  children: w
-                }, _)), m.jsx("th", {
+                  children: col.label
+                }, col.key)), moCustomCols.map(col => m.jsx("th", {
+                  rowSpan: 2,
+                  className: "border border-black px-2 py-1 text-center font-bold whitespace-nowrap",
+                  style: {
+                    background: col.bg,
+                    color: col.fg
+                  },
+                  children: col.label
+                }, col.key)), m.jsx("th", {
                   rowSpan: 2,
                   className: "border border-black px-2 py-1 text-center font-bold whitespace-nowrap",
                   children: "Visits"
@@ -52676,43 +52788,39 @@ function XU({
                     minWidth: 140
                   },
                   children: "Challenges"
-                }), g.map(_ => m.jsx("th", {
-                  rowSpan: 2,
-                  className: "border border-black px-2 py-1 text-center font-bold whitespace-nowrap",
-                  children: _.label
-                }, _.id))]
+                })]
               }), m.jsx("tr", {
-                children: y.map(([_, w, S, C]) => m.jsxs(m.Fragment, {
+                children: moPosCols.map(col => m.jsxs(m.Fragment, {
                   children: [m.jsx("th", {
                     className: "border border-black px-1 py-1 text-center font-bold",
                     style: {
-                      background: S,
-                      color: C
+                      background: col.bg,
+                      color: col.fg
                     },
                     children: "Smart"
-                  }, `${_}-s`), m.jsx("th", {
+                  }, `${col.key}-s`), m.jsx("th", {
                     className: "border border-black px-1 py-1 text-center font-bold",
                     style: {
-                      background: S,
-                      color: C
+                      background: col.bg,
+                      color: col.fg
                     },
                     children: "TPOS"
-                  }, `${_}-t`), m.jsx("th", {
+                  }, `${col.key}-t`), m.jsx("th", {
                     className: "border border-black px-1 py-1 text-center font-bold",
                     style: {
-                      background: S,
-                      color: C
+                      background: col.bg,
+                      color: col.fg
                     },
                     children: "MPOS"
-                  }, `${_}-m`), m.jsx("th", {
+                  }, `${col.key}-m`), m.jsx("th", {
                     className: "border border-black px-1 py-1 text-center font-bold",
                     style: {
-                      background: S,
-                      color: C
+                      background: col.bg,
+                      color: col.fg
                     },
                     children: "Total"
-                  }, `${_}-total`)]
-                }))
+                  }, `${col.key}-total`)]
+                }, col.key))
               })]
             }), m.jsx("tbody", {
               children: d.map((_, w) => {
@@ -52735,45 +52843,48 @@ function XU({
                   }), m.jsx("td", {
                     className: "border border-gray-300 px-2 py-1",
                     children: S.moName || k.name || ""
-                  }), y.map(([T, w, bg]) => {
-                    const N = (_.data || {})[T] || {};
+                  }), moPosCols.map(col => {
+                    const N = getMOCellValue(S, col, n);
                     return m.jsxs(m.Fragment, {
                       children: [m.jsx("td", {
                         className: "border border-gray-300 px-1 py-1 text-center",
                         style: {
-                          background: bg + "99"
+                          background: col.bg + "99"
                         },
                         children: N.smart || 0
-                      }, `${_.id}-${T}-s`), m.jsx("td", {
+                      }, `${_.id}-${col.key}-s`), m.jsx("td", {
                         className: "border border-gray-300 px-1 py-1 text-center",
                         style: {
-                          background: bg + "99"
+                          background: col.bg + "99"
                         },
                         children: N.tpos || 0
-                      }, `${_.id}-${T}-t`), m.jsx("td", {
+                      }, `${_.id}-${col.key}-t`), m.jsx("td", {
                         className: "border border-gray-300 px-1 py-1 text-center",
                         style: {
-                          background: bg + "99"
+                          background: col.bg + "99"
                         },
                         children: N.mpos || 0
-                      }, `${_.id}-${T}-m`), m.jsx("td", {
+                      }, `${_.id}-${col.key}-m`), m.jsx("td", {
                         className: "border border-gray-300 px-1 py-1 text-center font-bold",
                         style: {
-                          background: bg + "99"
+                          background: col.bg + "99"
                         },
                         children: N.total || 0
-                      }, `${_.id}-${T}-total`)]
-                    })
-                  }), m.jsx("td", {
+                      }, `${_.id}-${col.key}-total`)]
+                    }, col.key)
+                  }), moCustomCols.map(col => m.jsx("td", {
+                    className: "border border-gray-300 px-1 py-1 text-center",
+                    style: {
+                      background: col.bg + "99"
+                    },
+                    children: getMOCellValue(S, col, n)
+                  }, col.key)), m.jsx("td", {
                     className: "border border-gray-300 px-1 py-1 text-center font-bold",
                     children: S.visitation || 0
                   }), m.jsx("td", {
                     className: "border border-gray-300 px-2 py-1 text-[10px]",
                     children: S.challenges || ""
-                  }), g.map(T => m.jsx("td", {
-                    className: "border border-gray-300 px-1 py-1 text-center",
-                    children: (S.custom || {})[T.id] ?? ""
-                  }, T.id))]
+                  })]
                 }, _.id)
               })
             })]
@@ -53528,7 +53639,7 @@ function ez() {
 function tz() {
   const {
     user: e
-  } = Qn(), [t, r] = E.useState(() => new Date().toISOString().split("T")[0]), [n, s] = E.useState([]), [o, l] = E.useState(!0), u = E.useCallback(async () => {
+  } = Qn(), [fromDate, setFromDate] = E.useState(() => new Date().toISOString().split("T")[0]), [toDate, setToDate] = E.useState(() => new Date().toISOString().split("T")[0]), [n, s] = E.useState([]), [o, l] = E.useState(!0), u = E.useCallback(async () => {
     if (e) {
       l(!0);
       try {
@@ -53544,23 +53655,29 @@ function tz() {
             canManage: !1,
             canSubmitReports: !1
           },
-          b = await Pl(y, t, "MO"),
-          _ = new Map(b.map(S => [S.user_id, S]));
+          b = await rL(y, { from: fromDate, to: toDate, type: "MO" }),
+          _ = new Map();
+        b.forEach(S => { _.has(S.user_id) ? _.get(S.user_id).push(S) : _.set(S.user_id, [S]) });
         let w = g.map(S => {
-          const C = _.get(S.id),
-            k = C?.data || {},
-            T = k.visitation || 0,
-            N = k.assigned?.total || 0,
-            F = k.linked?.total || 0,
-            U = k.swapped?.total || 0;
-          let R = 0;
-          k.custom && Object.values(k.custom).forEach(P => {
-            typeof P == "number" && (R += P)
+          const reports = _.get(S.id) || [],
+            reportCount = reports.length,
+            latestReport = reports[0] || null;
+          let T = 0, N = 0, F = 0, U = 0, R = 0;
+          reports.forEach(rep => {
+            const k = rep.data || {};
+            T += k.visitation || 0;
+            N += k.assigned?.total || 0;
+            F += k.linked?.total || 0;
+            U += k.swapped?.total || 0;
+            k.custom && Object.values(k.custom).forEach(P => {
+              typeof P == "number" && (R += P)
+            });
           });
           const L = T + N + F + U + R;
           return {
             user: S,
-            report: C,
+            report: latestReport,
+            reportCount: reportCount,
             score: L,
             rank: 0
           }
@@ -53574,7 +53691,7 @@ function tz() {
         l(!1)
       }
     }
-  }, [e, t]);
+  }, [e, fromDate, toDate]);
   E.useEffect(() => {
     u()
   }, [u]);
@@ -53590,25 +53707,33 @@ function tz() {
           children: [m.jsx(Pa, {
             className: "text-amber-500",
             size: 22
-          }), "MO Daily Rankings"]
+          }), "MO Rankings"]
         }), m.jsx("p", {
           className: "text-xs text-gray-400 mt-1",
-          children: "Performance ranking of your MO staff based on daily report data"
+          children: "Performance ranking of your MO staff based on report data"
         })]
       }), m.jsxs("div", {
-        className: "flex items-center gap-2",
-        children: [m.jsx(Ml, {
-          size: 14,
-          className: "text-gray-400"
-        }), m.jsx(yt, {
-          type: "date",
-          value: t,
-          onChange: p => r(p.target.value),
-          className: "w-40 h-8 text-xs"
+        className: "flex items-center gap-2 flex-wrap",
+        children: [m.jsxs("div", {
+          className: "flex items-center gap-1",
+          children: [m.jsx("span", { className: "text-[10px] font-bold text-gray-400 uppercase", children: "From" }), m.jsx(yt, {
+            type: "date",
+            value: fromDate,
+            onChange: p => setFromDate(p.target.value),
+            className: "w-36 h-8 text-xs"
+          })]
+        }), m.jsxs("div", {
+          className: "flex items-center gap-1",
+          children: [m.jsx("span", { className: "text-[10px] font-bold text-gray-400 uppercase", children: "To" }), m.jsx(yt, {
+            type: "date",
+            value: toDate,
+            onChange: p => setToDate(p.target.value),
+            className: "w-36 h-8 text-xs"
+          })]
         }), m.jsx(ht, {
           size: "sm",
           variant: "outline",
-          onClick: () => r(new Date().toISOString().split("T")[0]),
+          onClick: () => { const t = new Date().toISOString().split("T")[0]; setFromDate(t); setToDate(t) },
           className: "h-8 text-xs",
           children: "Today"
         })]
@@ -53627,7 +53752,7 @@ function tz() {
         className: "mx-auto text-gray-300 mb-3"
       }), m.jsx("p", {
         className: "text-sm font-bold text-gray-400",
-        children: "No MO reports for this date"
+        children: "No MO reports in this date range"
       }), m.jsx("p", {
         className: "text-xs text-gray-300 mt-1",
         children: "Your assigned MO staff haven't submitted reports yet"
@@ -53901,7 +54026,7 @@ function nz() {
 function az() {
   const {
     user: e
-  } = Qn(), [t, r] = E.useState(() => new Date().toISOString().split("T")[0]), [n, s] = E.useState([]), [o, l] = E.useState([]), [u, d] = E.useState(!0);
+  } = Qn(), [fromDate, setFromDate] = E.useState(() => new Date().toISOString().split("T")[0]), [toDate, setToDate] = E.useState(() => new Date().toISOString().split("T")[0]), [n, s] = E.useState([]), [o, l] = E.useState([]), [u, d] = E.useState(!0);
   E.useEffect(() => {
     ph().then(l)
   }, []);
@@ -53921,33 +54046,39 @@ function az() {
             canManage: !1,
             canSubmitReports: !1
           },
-          w = await Pl(_, t, "MS"),
+          w = await rL(_, { from: fromDate, to: toDate, type: "MS" }),
           S = o.filter(T => T.team === "MS" || T.team === "Both"),
-          C = new Map(w.map(T => [T.user_id, T]));
+          C = new Map();
+        w.forEach(T => { C.has(T.user_id) ? C.get(T.user_id).push(T) : C.set(T.user_id, [T]) });
         let k = b.map(T => {
-          const N = C.get(T.id),
-            F = N?.data || {},
-            U = me => parseInt(me) || 0,
-            R = U(F.enrolled),
-            L = readMSBinding(F, o),
-            P = U(F.profileCount),
-            J = U(F.visitation),
-            ee = (F.merchantIds || []).length,
-            te = U(F.swapCount),
-            he = (F.terminalSNs || []).length,
-            fe = (F.swapMerchantIds || []).length;
-          let pe = 0;
+          const reports = C.get(T.id) || [],
+            reportCount = reports.length,
+            latestReport = reports[0] || null;
+          let R = 0, L = 0, P = 0, J = 0, ee = 0, te = 0, he = 0, fe = 0, pe = 0;
           const Y = {};
-          S.filter(me => me.type === "number").forEach(me => {
-            const Ce = U(F.custom?.[me.id]);
-            Ce && (pe += Ce, Y[me.label] = Ce)
-          }), S.filter(me => me.type === "yesno").forEach(me => {
-            F.custom?.[me.id] === "Yes" && (pe += 1, Y[me.label] = "Y")
+          reports.forEach(rep => {
+            const F = rep.data || {},
+              U = me => parseInt(me) || 0;
+            R += U(F.enrolled);
+            L += readMSBinding(F, o);
+            P += U(F.profileCount);
+            J += U(F.visitation);
+            ee += (F.merchantIds || []).length;
+            te += U(F.swapCount);
+            he += (F.terminalSNs || []).length;
+            fe += (F.swapMerchantIds || []).length;
+            S.filter(me => me.type === "number").forEach(me => {
+              const Ce = U(F.custom?.[me.id]);
+              Ce && (pe += Ce, Y[me.label] = (Y[me.label] || 0) + Ce)
+            }), S.filter(me => me.type === "yesno").forEach(me => {
+              F.custom?.[me.id] === "Yes" && (pe += 1, Y[me.label] = "Y")
+            });
           });
           const re = R + L + P + J + ee + te + he + fe + pe;
           return {
             user: T,
-            report: N,
+            report: latestReport,
+            reportCount: reportCount,
             score: re,
             rank: 0,
             breakdown: {
@@ -53972,7 +54103,7 @@ function az() {
         d(!1)
       }
     }
-  }, [e, t, o]);
+  }, [e, fromDate, toDate, o]);
   E.useEffect(() => {
     h()
   }, [h]);
@@ -53988,25 +54119,33 @@ function az() {
           children: [m.jsx(Pa, {
             className: "text-amber-500",
             size: 22
-          }), "MS Daily Rankings"]
+          }), "MS Rankings"]
         }), m.jsx("p", {
           className: "text-xs text-gray-400 mt-1",
-          children: "Performance ranking of your MS staff based on daily report data"
+          children: "Performance ranking of your MS staff based on report data"
         })]
       }), m.jsxs("div", {
-        className: "flex items-center gap-2",
-        children: [m.jsx(Ml, {
-          size: 14,
-          className: "text-gray-400"
-        }), m.jsx(yt, {
-          type: "date",
-          value: t,
-          onChange: y => r(y.target.value),
-          className: "w-40 h-8 text-xs"
+        className: "flex items-center gap-2 flex-wrap",
+        children: [m.jsxs("div", {
+          className: "flex items-center gap-1",
+          children: [m.jsx("span", { className: "text-[10px] font-bold text-gray-400 uppercase", children: "From" }), m.jsx(yt, {
+            type: "date",
+            value: fromDate,
+            onChange: y => setFromDate(y.target.value),
+            className: "w-36 h-8 text-xs"
+          })]
+        }), m.jsxs("div", {
+          className: "flex items-center gap-1",
+          children: [m.jsx("span", { className: "text-[10px] font-bold text-gray-400 uppercase", children: "To" }), m.jsx(yt, {
+            type: "date",
+            value: toDate,
+            onChange: y => setToDate(y.target.value),
+            className: "w-36 h-8 text-xs"
+          })]
         }), m.jsx(ht, {
           size: "sm",
           variant: "outline",
-          onClick: () => r(new Date().toISOString().split("T")[0]),
+          onClick: () => { const t = new Date().toISOString().split("T")[0]; setFromDate(t); setToDate(t) },
           className: "h-8 text-xs",
           children: "Today"
         })]
@@ -54025,7 +54164,7 @@ function az() {
         className: "mx-auto text-gray-300 mb-3"
       }), m.jsx("p", {
         className: "text-sm font-bold text-gray-400",
-        children: "No MS reports for this date"
+        children: "No MS reports in this date range"
       }), m.jsx("p", {
         className: "text-xs text-gray-300 mt-1",
         children: "Your assigned MS staff haven't submitted reports yet"
@@ -54338,7 +54477,7 @@ function iz() {
 }
 
 function oz() {
-  const [e, t] = E.useState(() => new Date().toISOString().split("T")[0]), [r, n] = E.useState([]), [s, o] = E.useState([]), [l, u] = E.useState([]), [d, h] = E.useState(!0);
+  const [fromDate, setFromDate] = E.useState(() => new Date().toISOString().split("T")[0]), [toDate, setToDate] = E.useState(() => new Date().toISOString().split("T")[0]), [r, n] = E.useState([]), [s, o] = E.useState([]), [l, u] = E.useState([]), [d, h] = E.useState(!0);
   E.useEffect(() => {
     ph().then(o), za().then(u)
   }, []);
@@ -54346,7 +54485,7 @@ function oz() {
     h(!0);
     try {
       const _ = (await Ol()).filter(U => U.role === "ms"),
-        S = await Pl({
+        S = await rL({
           canViewMO: !1,
           canViewMS: !0,
           canViewAllMarkets: !0,
@@ -54355,34 +54494,40 @@ function oz() {
           allowedUserIds: [],
           canManage: !1,
           canSubmitReports: !1
-        }, e, "MS"),
+        }, { from: fromDate, to: toDate, type: "MS" }),
         C = s.filter(U => U.team === "MS" || U.team === "Both"),
-        k = new Map(S.map(U => [U.user_id, U]));
+        k = new Map();
+      S.forEach(U => { k.has(U.user_id) ? k.get(U.user_id).push(U) : k.set(U.user_id, [U]) });
       let T = _.map(U => {
-        const R = k.get(U.id),
-          L = R?.data || {},
-          P = M => parseInt(M) || 0,
-          J = P(L.enrolled),
-          ee = readMSBinding(L, s),
-          te = P(L.profileCount),
-          he = P(L.visitation),
-          fe = (L.merchantIds || []).length,
-          pe = P(L.swapCount),
-          Y = (L.terminalSNs || []).length,
-          re = (L.swapMerchantIds || []).length;
-        let me = 0;
+        const reports = k.get(U.id) || [],
+          reportCount = reports.length,
+          latestReport = reports[0] || null;
+        let J = 0, ee = 0, te = 0, he = 0, fe = 0, pe = 0, Y = 0, re = 0, me = 0;
         const Ce = {};
-        C.filter(M => M.type === "number").forEach(M => {
-          const D = P(L.custom?.[M.id]);
-          D && (me += D, Ce[M.label] = D)
-        }), C.filter(M => M.type === "yesno").forEach(M => {
-          L.custom?.[M.id] === "Yes" && (me += 1, Ce[M.label] = "Y")
+        reports.forEach(rep => {
+          const L = rep.data || {},
+            P = M => parseInt(M) || 0;
+          J += P(L.enrolled);
+          ee += readMSBinding(L, s);
+          te += P(L.profileCount);
+          he += P(L.visitation);
+          fe += (L.merchantIds || []).length;
+          pe += P(L.swapCount);
+          Y += (L.terminalSNs || []).length;
+          re += (L.swapMerchantIds || []).length;
+          C.filter(M => M.type === "number").forEach(M => {
+            const D = P(L.custom?.[M.id]);
+            D && (me += D, Ce[M.label] = (Ce[M.label] || 0) + D)
+          }), C.filter(M => M.type === "yesno").forEach(M => {
+            L.custom?.[M.id] === "Yes" && (me += 1, Ce[M.label] = "Y")
+          });
         });
         const we = J + ee + te + he + fe + pe + Y + re + me,
           q = l.find(M => M.id === U.market_id);
         return {
           user: U,
-          report: R,
+          report: latestReport,
+          reportCount: reportCount,
           market: q,
           score: we,
           rank: 0,
@@ -54411,7 +54556,7 @@ function oz() {
     } finally {
       h(!1)
     }
-  }, [e, s, l]);
+  }, [fromDate, toDate, s, l]);
   E.useEffect(() => {
     p()
   }, [p]);
@@ -54433,19 +54578,27 @@ function oz() {
           children: "All MS staff ranked across all markets"
         })]
       }), m.jsxs("div", {
-        className: "flex items-center gap-2",
-        children: [m.jsx(Ml, {
-          size: 14,
-          className: "text-gray-400"
-        }), m.jsx(yt, {
-          type: "date",
-          value: e,
-          onChange: b => t(b.target.value),
-          className: "w-40 h-8 text-xs"
+        className: "flex items-center gap-2 flex-wrap",
+        children: [m.jsxs("div", {
+          className: "flex items-center gap-1",
+          children: [m.jsx("span", { className: "text-[10px] font-bold text-gray-400 uppercase", children: "From" }), m.jsx(yt, {
+            type: "date",
+            value: fromDate,
+            onChange: b => setFromDate(b.target.value),
+            className: "w-36 h-8 text-xs"
+          })]
+        }), m.jsxs("div", {
+          className: "flex items-center gap-1",
+          children: [m.jsx("span", { className: "text-[10px] font-bold text-gray-400 uppercase", children: "To" }), m.jsx(yt, {
+            type: "date",
+            value: toDate,
+            onChange: b => setToDate(b.target.value),
+            className: "w-36 h-8 text-xs"
+          })]
         }), m.jsx(ht, {
           size: "sm",
           variant: "outline",
-          onClick: () => t(new Date().toISOString().split("T")[0]),
+          onClick: () => { const t = new Date().toISOString().split("T")[0]; setFromDate(t); setToDate(t) },
           className: "h-8 text-xs",
           children: "Today"
         })]
@@ -54464,7 +54617,7 @@ function oz() {
         className: "mx-auto text-gray-300 mb-3"
       }), m.jsx("p", {
         className: "text-sm font-bold text-gray-400",
-        children: "No MS reports for this date"
+        children: "No MS reports in this date range"
       })]
     }) : m.jsxs("div", {
       className: "space-y-3",
