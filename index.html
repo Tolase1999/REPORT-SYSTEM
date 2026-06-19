@@ -27180,7 +27180,8 @@ const _j = [
     Trophy: Pa,
     FileText: qi,
     BarChart3: Ad,
-    Eye: u2
+    Eye: u2,
+    Calendar: Ml
   },
   Ej = [{
     label: "Dashboard",
@@ -27238,6 +27239,11 @@ const _j = [
     path: "/mo-supervisor/reports",
     roles: ["mo_supervisor"]
   }, {
+    label: "MO Calendar",
+    icon: "Calendar",
+    path: "/mo-supervisor/calendar",
+    roles: ["mo_supervisor"]
+  }, {
     label: "MO Rankings",
     icon: "Trophy",
     path: "/mo-supervisor/ranking",
@@ -27251,6 +27257,11 @@ const _j = [
     label: "MS Reports",
     icon: "ClipboardList",
     path: "/ms-supervisor/reports",
+    roles: ["ms_supervisor"]
+  }, {
+    label: "MS Calendar",
+    icon: "Calendar",
+    path: "/ms-supervisor/calendar",
     roles: ["ms_supervisor"]
   }, {
     label: "MS Rankings",
@@ -36060,6 +36071,104 @@ function readMSBinding(e, t) {
   return 0
 }
 
+// Reads an MO POS-section field (smart/tpos/mpos/total) from report data.
+// Tries data[fieldKey] first (system task key), then falls back to
+// Maps a task to its canonical storage key for MO POS sections.
+// The form stores data at this key so the preview can read it directly
+// without guessing by label. Falls back to task.key || task.id if no
+// canonical match is found.
+// Canonical keys: "assigned", "linked", "swapped", "returned",
+//   "stock_new", "stock_rep", "stock_rr", "faulty"
+function getMOCanonicalKey(task) {
+  if (!task) return null;
+  // If the task already has a system key, use it
+  if (task.key && typeof task.key === "string" && task.key.trim() !== "") {
+    return task.key;
+  }
+  // Map by label pattern to a canonical key
+  const label = task.label || "";
+  const patterns = [
+    { key: "stock_rr", re: /(?:r&r|rr)\s*stock|stock\s*(?:rr|r&r)/i },
+    { key: "returned", re: /^(?!.*stock).*(?:return|retrieve)/i },
+    { key: "stock_new", re: /new\s*stock|brand\s*new/i },
+    { key: "stock_rep", re: /rep.*stock|repaired.*stock|stock.*rep/i },
+    { key: "faulty", re: /faulty/i },
+    { key: "assigned", re: /assign/i },
+    { key: "linked", re: /^(?!.*swap).*(?:link)/i },
+    { key: "swapped", re: /swap/i }
+  ];
+  for (const p of patterns) {
+    if (p.re.test(label)) return p.key;
+  }
+  // No canonical match — fall back to task.id
+  return task.id;
+}
+
+// data.custom[taskId] by matching the task label — for admin-created tasks
+// where key=null and system=false.
+// fieldKey: "assigned" | "linked" | "swapped" | "returned" | "stock_new" | "stock_rep" | "stock_rr" | "faulty"
+// Returns { smart, tpos, mpos, total } (zeros if not found).
+function readMOPOSField(e, t, fieldKey) {
+  if (!e) return { smart: 0, tpos: 0, mpos: 0, total: 0 };
+  // Strategy 1: read canonical key directly (NEW reports — form stores here)
+  // This is the primary path. The form now stores POS data at data[fieldKey]
+  // via getMOCanonicalKey(), so we can read it directly.
+  const direct = e[fieldKey];
+  if (direct && typeof direct === "object" && (direct.smart !== undefined || direct.tpos !== undefined || direct.total !== undefined)) {
+    return { smart: direct.smart || 0, tpos: direct.tpos || 0, mpos: direct.mpos || 0, total: direct.total || 0 }
+  }
+  // Strategy 2: search tasks for one matching this fieldKey, then read its data.
+  // This handles OLD reports where data was stored at data[task.id] (UUID key).
+  if (t && Array.isArray(t)) {
+    const labelPatterns = {
+      stock_rr: /(?:r&r|rr)\s*stock|stock\s*(?:rr|r&r)/i,
+      returned: /^(?!.*stock).*(?:return|retrieve)/i,
+      stock_new: /new\s*stock|brand\s*new/i,
+      stock_rep: /rep.*stock|repaired.*stock|stock.*rep/i,
+      faulty: /faulty/i,
+      assigned: /assign/i,
+      linked: /^(?!.*swap).*(?:link)/i,
+      swapped: /swap/i
+    };
+    const pattern = labelPatterns[fieldKey];
+    let matchedTask = null;
+    for (const o of t) {
+      if (!o || (o.team !== "MO" && o.team !== "Both")) continue;
+      if (o.active === !1) continue;
+      if (o.key === fieldKey) { matchedTask = o; break; }
+      if (pattern && o.label && pattern.test(o.label)) { matchedTask = o; break; }
+    }
+    if (matchedTask) {
+      // Try task.key, task.id, then custom[task.id]
+      const src = (matchedTask.key && e[matchedTask.key]) || e[matchedTask.id] || (e.custom && e.custom[matchedTask.id]);
+      if (src && typeof src === "object" && (src.smart !== undefined || src.tpos !== undefined || src.total !== undefined)) {
+        return { smart: src.smart || 0, tpos: src.tpos || 0, mpos: src.mpos || 0, total: src.total || 0 }
+      }
+      if (typeof src === "number") {
+        return { smart: 0, tpos: 0, mpos: 0, total: src }
+      }
+    }
+  }
+  // Strategy 3: try common alternative keys (last resort)
+  const altKeys = {
+    returned: ["returned_rr", "rr", "return_rr", "retrieved"],
+    stock_rr: ["rr_stock", "stock_rr", "rr"],
+    stock_new: ["new_stock", "stockNew", "newStock"],
+    stock_rep: ["rep_stock", "stockRep", "repaired", "repaired_stock"],
+    faulty: ["faulty_pos", "faultyPos"],
+    assigned: ["assign", "assigned_pos", "assignedPos"],
+    linked: ["link", "linked_pos", "linkedPos"],
+    swapped: ["swap", "swapped_pos", "swappedPos"]
+  }[fieldKey] || [];
+  for (const k of altKeys) {
+    const v = e[k];
+    if (v && typeof v === "object" && (v.smart !== undefined || v.tpos !== undefined || v.total !== undefined)) {
+      return { smart: v.smart || 0, tpos: v.tpos || 0, mpos: v.mpos || 0, total: v.total || 0 }
+    }
+  }
+  return { smart: 0, tpos: 0, mpos: 0, total: 0 }
+}
+
 // ============================================================================
 // Report-to-text formatters + clipboard copy helper
 // Used by MO/MS submit handlers to auto-copy a WhatsApp-shareable summary
@@ -36079,20 +36188,20 @@ function _rPos(e, t) {
 }
 
 // Formats an MO report as plain text matching the user's sample template.
-function formatMOReportText(e, t) {
+function formatMOReportText(e, t, tasks) {
   const r = e.data || {},
     n = t ? t.name : r.market || "",
     a = t ? t.city : r.city || "",
     o = r.moName || e.user?.name || "",
     i = e.date || "",
-    s = _rPos(r, "assigned"),
-    l = _rPos(r, "linked"),
-    u = _rPos(r, "swapped"),
-    d = _rPos(r, "returned"),
-    h = _rPos(r, "stock_new"),
-    p = _rPos(r, "stock_rep"),
-    g = _rPos(r, "stock_rr"),
-    y = _rPos(r, "faulty"),
+    s = readMOPOSField(r, tasks, "assigned"),
+    l = readMOPOSField(r, tasks, "linked"),
+    u = readMOPOSField(r, tasks, "swapped"),
+    d = readMOPOSField(r, tasks, "returned"),
+    h = readMOPOSField(r, tasks, "stock_new"),
+    p = readMOPOSField(r, tasks, "stock_rep"),
+    g = readMOPOSField(r, tasks, "stock_rr"),
+    y = readMOPOSField(r, tasks, "faulty"),
     _ = _rNum(r, "visitation"),
     w = r.challenges || "Nil";
   return [
@@ -36455,6 +36564,7 @@ const MO_SYSTEM_COLUMNS = [
   { key: "assigned", label: "Total POS Assigned MS/BD", bg: "#D4EDDA", fg: "#155724" },
   { key: "linked", label: "Total POS Linked", bg: "#CCE5FF", fg: "#004085" },
   { key: "swapped", label: "POS Swapped", bg: "#FFF3CD", fg: "#856404" },
+  { key: "returned", label: "Returned & Retrieved (R&R)", bg: "#E8E8E8", fg: "#1a1a1a" },
   { key: "stock_new", label: "New Stock", bg: "#E2D9F3", fg: "#4A235A" },
   { key: "stock_rep", label: "Repaired Stock", bg: "#D1ECF1", fg: "#0C5460" },
   { key: "stock_rr", label: "R&R Stock", bg: "#FFE5D0", fg: "#7A3200" },
@@ -36465,27 +36575,50 @@ const MO_SYSTEM_COLUMNS = [
 // System columns come first (in their defined order), then custom MO tasks.
 function getVisibleMOColumns(tasks) {
   const cols = [];
+  const seenKeys = new Set();
   // System POS Activity columns (filtered by visibility)
   MO_SYSTEM_COLUMNS.forEach(sysCol => {
     if (isPreviewTaskVisible("MO", sysCol.key)) {
-      cols.push({ ...sysCol, isCustom: !1, isPosSection: !0, dataKey: sysCol.key })
+      cols.push({ ...sysCol, isCustom: !1, isPosSection: !0, dataKey: sysCol.key });
+      seenKeys.add(sysCol.key);
     }
   });
-  // Custom MO tasks (filtered by visibility) — single-column, not POS sections
+  // Custom MO tasks (filtered by visibility)
   if (tasks && Array.isArray(tasks)) {
     tasks.filter(t => (t.team === "MO" || t.team === "Both") && t.active !== !1 && !t.system)
       .forEach(t => {
         if (isPreviewTaskVisible("MO", t.id)) {
-          cols.push({
-            key: t.id,
-            label: t.label,
-            bg: "#F0F0F0",
-            fg: "#333333",
-            isCustom: !0,
-            isPosSection: !1,
-            taskId: t.id,
-            taskType: t.type
-          })
+          if (t.type === "pos_section") {
+            // Admin-created POS section — treat as a POS section with Smart/TPOS/MPOS/Total
+            // Use canonical key so data can be found by readMOPOSField
+            const canonicalKey = getMOCanonicalKey(t) || t.id;
+            // Skip if this canonical key was already added as a system column
+            if (seenKeys.has(canonicalKey)) return;
+            seenKeys.add(canonicalKey);
+            cols.push({
+              key: canonicalKey,
+              label: t.label,
+              bg: "#E8E8E8",
+              fg: "#1a1a1a",
+              isCustom: !1,
+              isPosSection: !0,
+              dataKey: canonicalKey
+            })
+          } else {
+            // Non-POS custom task — single column
+            if (seenKeys.has(t.id)) return;
+            seenKeys.add(t.id);
+            cols.push({
+              key: t.id,
+              label: t.label,
+              bg: "#F0F0F0",
+              fg: "#333333",
+              isCustom: !0,
+              isPosSection: !1,
+              taskId: t.id,
+              taskType: t.type
+            })
+          }
         }
       })
   }
@@ -36497,11 +36630,14 @@ function getVisibleMOColumns(tasks) {
 // For custom tasks, returns the scalar value.
 function getMOCellValue(reportData, col, allTasks) {
   if (col.isPosSection && !col.isCustom) {
-    // POS section: return the full object { smart, tpos, mpos, total }
-    return reportData[col.dataKey] || { smart: 0, tpos: 0, mpos: 0, total: 0 }
+    // POS section: use readMOPOSField to robustly find the data
+    // (handles both system tasks with key=fieldKey and admin tasks with key=null)
+    return readMOPOSField(reportData, allTasks, col.dataKey)
   }
   if (col.isCustom) {
-    const customVal = reportData.custom && reportData.custom[col.taskId];
+    // Custom task: the form stores at data[task.key || task.id]
+    const storageKey = col.taskId; // for custom tasks, taskId is the id
+    const customVal = reportData[storageKey] || (reportData.custom && reportData.custom[col.taskId]);
     if (col.taskType === "yesno") {
       return customVal === "Yes" ? "Y" : customVal === "No" ? "N" : (customVal || "")
     }
@@ -52040,7 +52176,7 @@ function Eh({
               Bt = d.find(Yt => Yt.id === st.user_id) || st.user || {};
             return [st.date, er.name || "", er.city || nt.city || "", nt.moName || Bt.name || "",
               ...moPosColsEx.flatMap(c => {
-                const Ar = De(c.dataKey);
+                const Ar = readMOPOSField(nt, p, c.dataKey);
                 return [Ar.smart || 0, Ar.tpos || 0, Ar.mpos || 0, Ar.total || 0]
               }),
               ...moCustomColsEx.map(c => getMOCellValue(nt, c, p)),
@@ -52246,18 +52382,18 @@ function Eh({
     }), m.jsxs("div", {
       className: "grid grid-cols-2 md:grid-cols-5 gap-3",
       children: [m.jsxs(Je, {
-        className: "p-3 text-center border-l-4 border-gray-300",
+        className: "p-2 text-center border-l-4 border-gray-300",
         children: [m.jsx("div", {
-          className: "text-2xl font-extrabold text-gray-700",
+          className: "text-lg font-extrabold text-gray-700",
           children: s.length
         }), m.jsx("div", {
           className: "text-[10px] font-semibold text-gray-400 uppercase",
           children: "Total Reports"
         })]
       }), we && m.jsxs(Je, {
-        className: "p-3 text-center border-l-4 border-emerald-400",
+        className: "p-2 text-center border-l-4 border-emerald-400",
         children: [m.jsx("div", {
-          className: "text-2xl font-extrabold text-emerald-600",
+          className: "text-lg font-extrabold text-emerald-600",
           children: me
         }), m.jsx("div", {
           className: "text-[10px] font-semibold text-gray-400 uppercase",
@@ -52434,7 +52570,7 @@ function KU({
     l = e.data || {},
     _bindingVal = n ? parseInt(String(l.binding || 0)) : readMSBinding(l, Q),
     u = parseInt(String(l.swapCount || 0)) + _bindingVal + parseInt(String(l.enrolled || 0)) + parseInt(String(l.profileCount || 0)),
-    h = [l.stock_new, l.stock_rep, l.stock_rr, l.faulty].reduce((p, g) => p + (g?.total || 0), 0);
+    h = n ? ["stock_new", "stock_rep", "stock_rr", "faulty"].reduce((p, k) => p + (readMOPOSField(l, Q, k)?.total || 0), 0) : 0;
   return m.jsxs(Je, {
     className: `overflow-hidden transition-all ${n?"border-l-4 border-l-emerald-400 border border-emerald-100":"border-l-4 border-l-pink-400 border border-pink-100"}`,
     children: [m.jsxs("div", {
@@ -52524,28 +52660,28 @@ function KU({
             children: "POS Activity"
           }), isPreviewFieldVisible("MO", "assigned") && m.jsx(ai, {
             label: "Assigned MS/BD",
-            data: l.assigned
+            data: readMOPOSField(l, Q, "assigned")
           }), isPreviewFieldVisible("MO", "linked") && m.jsx(ai, {
             label: "Linked",
-            data: l.linked
+            data: readMOPOSField(l, Q, "linked")
           }), isPreviewFieldVisible("MO", "swapped") && m.jsx(ai, {
             label: "Swapped",
-            data: l.swapped
+            data: readMOPOSField(l, Q, "swapped")
           }), isPreviewFieldVisible("MO", "returned") && m.jsx(ai, {
             label: "Returned R&R",
-            data: l.returned
+            data: readMOPOSField(l, Q, "returned")
           }), isPreviewFieldVisible("MO", "stock_new") && m.jsx(ai, {
             label: "New Stock",
-            data: l.stock_new
+            data: readMOPOSField(l, Q, "stock_new")
           }), isPreviewFieldVisible("MO", "stock_rep") && m.jsx(ai, {
             label: "Repaired Stock",
-            data: l.stock_rep
+            data: readMOPOSField(l, Q, "stock_rep")
           }), isPreviewFieldVisible("MO", "stock_rr") && m.jsx(ai, {
             label: "R&R Stock",
-            data: l.stock_rr
+            data: readMOPOSField(l, Q, "stock_rr")
           }), isPreviewFieldVisible("MO", "faulty") && m.jsx(ai, {
             label: "Faulty",
-            data: l.faulty
+            data: readMOPOSField(l, Q, "faulty")
           })]
         }), isPreviewFieldVisible("MO", "challenges") && l.challenges && m.jsxs("div", {
           className: "bg-amber-50 border border-amber-100 rounded-xl px-4 py-3",
@@ -52866,19 +53002,23 @@ function XU({
                 },
                 children: [m.jsx("th", {
                   rowSpan: 2,
-                  className: "border border-black px-2 py-1 text-center font-bold whitespace-nowrap",
+                  className: "border border-black px-2 py-1 text-center font-bold whitespace-nowrap sticky-col",
+                  style: { position: "sticky", left: 0, background: "#FFFF00", zIndex: 11 },
                   children: "Date"
                 }), m.jsx("th", {
                   rowSpan: 2,
-                  className: "border border-black px-2 py-1 text-center font-bold whitespace-nowrap",
+                  className: "border border-black px-2 py-1 text-center font-bold whitespace-nowrap sticky-col",
+                  style: { position: "sticky", left: "70px", background: "#FFFF00", zIndex: 11 },
                   children: "Market"
                 }), m.jsx("th", {
                   rowSpan: 2,
-                  className: "border border-black px-2 py-1 text-center font-bold whitespace-nowrap",
+                  className: "border border-black px-2 py-1 text-center font-bold whitespace-nowrap sticky-col",
+                  style: { position: "sticky", left: "180px", background: "#FFFF00", zIndex: 11 },
                   children: "City"
                 }), m.jsx("th", {
                   rowSpan: 2,
-                  className: "border border-black px-2 py-1 text-center font-bold whitespace-nowrap",
+                  className: "border border-black px-2 py-1 text-center font-bold whitespace-nowrap sticky-col",
+                  style: { position: "sticky", left: "260px", background: "#FFFF00", zIndex: 11 },
                   children: "MO Name"
                 }), moPosCols.map(col => m.jsx("th", {
                   colSpan: 4,
@@ -52951,16 +53091,20 @@ function XU({
                     background: w % 2 === 0 ? "#fff" : "#f9fafb"
                   },
                   children: [m.jsx("td", {
-                    className: "border border-gray-300 px-2 py-1 text-center whitespace-nowrap",
+                    className: "border border-gray-300 px-2 py-1 text-center whitespace-nowrap sticky-col",
+                    style: { position: "sticky", left: 0, background: w % 2 === 0 ? "#fff" : "#f9fafb", zIndex: 5 },
                     children: _.date
                   }), m.jsx("td", {
-                    className: "border border-gray-300 px-2 py-1 font-bold",
+                    className: "border border-gray-300 px-2 py-1 font-bold sticky-col",
+                    style: { position: "sticky", left: "70px", background: w % 2 === 0 ? "#fff" : "#f9fafb", zIndex: 5 },
                     children: C.name || ""
                   }), m.jsx("td", {
-                    className: "border border-gray-300 px-2 py-1 text-center",
+                    className: "border border-gray-300 px-2 py-1 text-center sticky-col",
+                    style: { position: "sticky", left: "180px", background: w % 2 === 0 ? "#fff" : "#f9fafb", zIndex: 5 },
                     children: C.city || S.city || ""
                   }), m.jsx("td", {
-                    className: "border border-gray-300 px-2 py-1",
+                    className: "border border-gray-300 px-2 py-1 sticky-col",
+                    style: { position: "sticky", left: "260px", background: w % 2 === 0 ? "#fff" : "#f9fafb", zIndex: 5 },
                     children: S.moName || k.name || ""
                   }), moPosCols.map(col => {
                     const N = getMOCellValue(S, col, n);
@@ -53755,6 +53899,514 @@ function ez() {
   })
 }
 
+// Calendar view for MO/MS supervisors.
+// Shows a monthly calendar with color-coded dates:
+//   - Green: report submitted
+//   - Red: report not submitted (past dates only)
+//   - Gray: future dates
+// Clicking a date with a report shows the report details with edit capability.
+// teamType: "MO" or "MS"
+function SupervisorCalendar({ teamType }) {
+  const { user: e } = Qn(),
+    [currentMonth, setCurrentMonth] = E.useState(() => {
+      const d = new Date();
+      return { year: d.getFullYear(), month: d.getMonth() };
+    }),
+    [reports, setReports] = E.useState([]),
+    [tasks, setTasks] = E.useState([]),
+    [staff, setStaff] = E.useState([]),
+    [selectedStaff, setSelectedStaff] = E.useState(""),
+    [selectedDate, setSelectedDate] = E.useState(null),
+    [selectedReport, setSelectedReport] = E.useState(null),
+    [editMode, setEditMode] = E.useState(!1),
+    [editData, setEditData] = E.useState({}),
+    [saving, setSaving] = E.useState(!1),
+    [loading, setLoading] = E.useState(!0);
+
+  // Load tasks + staff on mount
+  E.useEffect(() => {
+    (async () => {
+      try {
+        const t = await ph();
+        setTasks(t);
+        if (e) {
+          const s = await jl(e.id);
+          const teamStaff = s.staff.filter(x => x.role === (teamType === "MO" ? "mo" : "ms"));
+          setStaff(teamStaff);
+          if (teamStaff.length > 0) setSelectedStaff(teamStaff[0].id);
+        }
+      } catch (err) {
+        console.error("Failed to load calendar data:", err);
+      } finally {
+        setLoading(!1);
+      }
+    })();
+  }, [e, teamType]);
+
+  // Load reports when month or staff changes
+  E.useEffect(() => {
+    if (!e || !selectedStaff) return;
+    (async () => {
+      setLoading(!0);
+      try {
+        const startDate = new Date(currentMonth.year, currentMonth.month, 1).toISOString().split("T")[0];
+        const endDate = new Date(currentMonth.year, currentMonth.month + 1, 0).toISOString().split("T")[0];
+        const scope = {
+          canViewMO: teamType === "MO",
+          canViewMS: teamType === "MS",
+          canViewAllMarkets: !1,
+          canViewAllStaff: !1,
+          allowedMarketIds: [],
+          allowedUserIds: [selectedStaff],
+          canManage: !1,
+          canSubmitReports: !1
+        };
+        const rpts = await rL(scope, { from: startDate, to: endDate, type: teamType });
+        setReports(rpts);
+      } catch (err) {
+        console.error("Failed to load reports:", err);
+      } finally {
+        setLoading(!1);
+      }
+    })();
+  }, [e, selectedStaff, currentMonth, teamType]);
+
+  // Build calendar grid
+  const today = new Date().toISOString().split("T")[0];
+  const firstDay = new Date(currentMonth.year, currentMonth.month, 1);
+  const lastDay = new Date(currentMonth.year, currentMonth.month + 1, 0);
+  const startWeekday = firstDay.getDay();
+  const daysInMonth = lastDay.getDate();
+  const days = [];
+  // Previous month padding
+  for (let i = 0; i < startWeekday; i++) days.push(null);
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = new Date(currentMonth.year, currentMonth.month, d).toISOString().split("T")[0];
+    days.push(dateStr);
+  }
+
+  // Map reports by date
+  const reportsByDate = {};
+  reports.forEach(r => {
+    if (r.date) reportsByDate[r.date] = r;
+  });
+
+  const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+  const prevMonth = () => {
+    setCurrentMonth(prev => {
+      const d = new Date(prev.year, prev.month - 1, 1);
+      return { year: d.getFullYear(), month: d.getMonth() };
+    });
+  };
+  const nextMonth = () => {
+    setCurrentMonth(prev => {
+      const d = new Date(prev.year, prev.month + 1, 1);
+      return { year: d.getFullYear(), month: d.getMonth() };
+    });
+  };
+
+  const handleDateClick = (dateStr) => {
+    const rpt = reportsByDate[dateStr];
+    setSelectedDate(dateStr);
+    if (rpt) {
+      // Existing report — view/edit
+      setSelectedReport(rpt);
+      setEditMode(!1);
+      setEditData(rpt.data || {});
+    } else {
+      // No report (missed date) — open in create/edit mode with empty data
+      setSelectedReport(null);
+      setEditMode(!0);
+      setEditData({});
+    }
+  };
+
+  const handleSave = async () => {
+    setSaving(!0);
+    try {
+      const staffMember = staff.find(s => s.id === selectedStaff);
+      const submitTime = new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+      const dataWithMeta = {
+        ...editData,
+        moName: teamType === "MO" ? (editData.moName || staffMember?.name || "") : (editData.moName || ""),
+        msName: teamType === "MS" ? (editData.msName || staffMember?.name || "") : (editData.msName || ""),
+        msCode: teamType === "MS" ? (editData.msCode || staffMember?.code || "") : (editData.msCode || ""),
+        city: editData.city || "",
+        market: editData.market || "",
+        marketId: editData.marketId || staffMember?.market_id || ""
+      };
+
+      if (selectedReport) {
+        // Update existing report
+        await aE(selectedReport.id, { data: dataWithMeta });
+        ui.success("Report updated successfully");
+      } else {
+        // Create new report for missed date
+        const newReport = {
+          type: teamType,
+          date: selectedDate,
+          submitted_at: submitTime,
+          user_id: selectedStaff,
+          market_id: staffMember?.market_id || null,
+          data: dataWithMeta
+        };
+        await nE(newReport);
+        ui.success("Report created successfully");
+      }
+      // Refresh reports
+      const startDate = new Date(currentMonth.year, currentMonth.month, 1).toISOString().split("T")[0];
+      const endDate = new Date(currentMonth.year, currentMonth.month + 1, 0).toISOString().split("T")[0];
+      const scope = {
+        canViewMO: teamType === "MO",
+        canViewMS: teamType === "MS",
+        canViewAllMarkets: !1,
+        canViewAllStaff: !1,
+        allowedMarketIds: [],
+        allowedUserIds: [selectedStaff],
+        canManage: !1,
+        canSubmitReports: !1
+      };
+      const rpts = await rL(scope, { from: startDate, to: endDate, type: teamType });
+      setReports(rpts);
+      if (selectedReport) {
+        const updated = rpts.find(r => r.id === selectedReport.id);
+        if (updated) setSelectedReport(updated);
+      } else {
+        const created = rpts.find(r => r.date === selectedDate && r.user_id === selectedStaff);
+        if (created) setSelectedReport(created);
+      }
+      setEditMode(!1);
+    } catch (err) {
+      ui.error(err.message || "Failed to save report");
+    } finally {
+      setSaving(!1);
+    }
+  };
+
+  // Helper to update a POS section field in editData
+  const updatePOSField = (fieldKey, posType, value) => {
+    setEditData(prev => {
+      const existing = prev[fieldKey] || { smart: 0, tpos: 0, mpos: 0, total: 0 };
+      const updated = { ...existing, [posType]: parseInt(value) || 0 };
+      updated.total = (updated.smart || 0) + (updated.tpos || 0) + (updated.mpos || 0);
+      return { ...prev, [fieldKey]: updated };
+    });
+  };
+
+  // Helper to update a simple field in editData
+  const updateField = (fieldKey, value) => {
+    setEditData(prev => ({ ...prev, [fieldKey]: value }));
+  };
+
+  const submittedCount = reports.length;
+  const expectedDays = days.filter(d => d && d <= today && new Date(d).getDay() !== 0).length;
+  const missedDays = Math.max(0, expectedDays - submittedCount);
+
+  return m.jsxs("div", {
+    className: "space-y-4",
+    children: [m.jsxs("div", {
+      children: [m.jsxs("h1", {
+        className: "text-base font-extrabold text-gray-800 flex items-center gap-2",
+        children: [m.jsx(Ml, {
+          className: teamType === "MO" ? "text-emerald-600" : "text-pink-500",
+          size: 18
+        }), teamType + " Report Calendar"]
+      }), m.jsx("p", {
+        className: "text-[10px] text-gray-400 mt-0.5",
+        children: "Green = report submitted · Red = not submitted · Click a green date to view/edit the report"
+      })]
+    }), m.jsxs(Je, {
+      className: "p-3",
+      children: [m.jsx("label", {
+        className: "text-[10px] font-semibold text-gray-500 uppercase mb-1 block",
+        children: "Select Staff"
+      }), m.jsxs(qn, {
+        value: selectedStaff,
+        onValueChange: v => setSelectedStaff(v),
+        children: [m.jsx(Kn, {
+          children: m.jsx(Yn, { placeholder: "Choose staff..." })
+        }), m.jsx(Xn, {
+          children: staff.map(s => m.jsxs(ft, {
+            value: s.id,
+            children: [s.name, s.code ? " (" + s.code + ")" : ""]
+          }, s.id))
+        })]
+      })]
+    }), m.jsxs("div", {
+      className: "grid grid-cols-3 gap-2",
+      children: [m.jsxs(Je, {
+        className: "p-2 text-center border-l-4 border-emerald-400",
+        children: [m.jsx("div", {
+          className: "text-lg font-extrabold text-emerald-600",
+          children: submittedCount
+        }), m.jsx("div", {
+          className: "text-[9px] font-semibold text-gray-400 uppercase",
+          children: "Submitted"
+        })]
+      }), m.jsxs(Je, {
+        className: "p-2 text-center border-l-4 border-red-400",
+        children: [m.jsx("div", {
+          className: "text-lg font-extrabold text-red-500",
+          children: missedDays
+        }), m.jsx("div", {
+          className: "text-[9px] font-semibold text-gray-400 uppercase",
+          children: "Missed"
+        })]
+      }), m.jsxs(Je, {
+        className: "p-2 text-center border-l-4 border-gray-300",
+        children: [m.jsx("div", {
+          className: "text-lg font-extrabold text-gray-700",
+          children: expectedDays
+        }), m.jsx("div", {
+          className: "text-[9px] font-semibold text-gray-400 uppercase",
+          children: "Expected"
+        })]
+      })]
+    }), m.jsxs(Je, {
+      className: "p-3",
+      children: [m.jsxs("div", {
+        className: "flex items-center justify-between mb-3",
+        children: [m.jsx(ht, {
+          variant: "outline",
+          size: "sm",
+          onClick: prevMonth,
+          children: m.jsx(x3, { size: 16 })
+        }), m.jsxs("h3", {
+          className: "text-xs font-bold text-gray-800",
+          children: [monthNames[currentMonth.month], " ", currentMonth.year]
+        }), m.jsx(ht, {
+          variant: "outline",
+          size: "sm",
+          onClick: nextMonth,
+          children: m.jsx(s3, { size: 16 })
+        })]
+      }), m.jsx("div", {
+        className: "space-y-1 max-h-[400px] overflow-y-auto",
+        children: days.filter(d => d).reverse().map((dateStr, i) => {
+          const day = parseInt(dateStr.split("-")[2]);
+          const hasReport = !!reportsByDate[dateStr];
+          const isPast = dateStr < today;
+          const isToday = dateStr === today;
+          const isFuture = dateStr > today;
+          const rpt = reportsByDate[dateStr];
+          const dateObj = new Date(dateStr + "T12:00:00");
+          const weekday = dateObj.toLocaleDateString("en-GB", { weekday: "short" });
+          const statusIcon = hasReport ? "✅" : (isPast ? "❌" : (isFuture ? "⬜" : ""));
+          const statusText = hasReport ? "Submitted" + (rpt?.submitted_at ? " " + rpt.submitted_at : "") : (isPast ? "Missed" : "Future");
+          const statusColor = hasReport ? "text-emerald-600" : (isPast ? "text-red-500" : "text-gray-400");
+          return m.jsx("button", {
+            onClick: () => !isFuture && handleDateClick(dateStr),
+            disabled: isFuture,
+            className: "w-full flex items-center gap-3 p-2 rounded-lg border transition-all text-left "
+              + (isToday ? "bg-blue-50 border-blue-300 " : "")
+              + (!isToday && hasReport ? "bg-emerald-50/50 border-emerald-100 hover:bg-emerald-50 hover:border-emerald-300 " : "")
+              + (!isToday && isPast && !hasReport ? "bg-red-50/50 border-red-100 hover:bg-red-50 hover:border-red-300 " : "")
+              + (!isToday && isFuture ? "bg-gray-50/50 border-gray-100 " : "")
+              + (!isFuture ? "cursor-pointer " : "cursor-default "),
+            children: m.jsxs(m.Fragment, {
+              children: [
+                m.jsx("span", { className: "text-xs text-gray-400 font-medium w-8 shrink-0", children: weekday }),
+                m.jsx("span", { className: "text-sm font-bold text-gray-700 w-6 shrink-0", children: day }),
+                m.jsx("span", { className: "text-xs shrink-0", children: statusIcon }),
+                m.jsx("span", { className: "text-xs font-medium " + statusColor + " flex-1", children: statusText }),
+                hasReport && m.jsx(ys, { size: 14, className: "text-emerald-500 shrink-0" }),
+                !hasReport && isPast && m.jsx(cg, { size: 14, className: "text-red-400 shrink-0" })
+              ]
+            })
+          }, i);
+        })
+      }), m.jsxs("div", {
+        className: "flex items-center gap-3 mt-2 text-[9px] text-gray-400",
+        children: [m.jsxs("div", {
+          className: "flex items-center gap-1",
+          children: [m.jsx("span", { children: "✅" }), " Submitted"]
+        }), m.jsxs("div", {
+          className: "flex items-center gap-1",
+          children: [m.jsx("span", { children: "❌" }), " Missed — click to create"]
+        }), m.jsxs("div", {
+          className: "flex items-center gap-1",
+          children: [m.jsx("div", { className: "w-2 h-2 rounded bg-blue-200 border border-blue-400" }), " Today"]
+        })]
+      })]
+    }), (selectedReport || editMode) && m.jsxs("div", {
+      className: "fixed inset-0 z-50 bg-black/50 flex items-start justify-center p-4 overflow-y-auto",
+      onClick: () => { setSelectedReport(null); setEditMode(!1) },
+      children: [m.jsxs(Je, {
+        className: "bg-white rounded-2xl shadow-2xl w-full max-w-2xl mt-4 mb-8",
+        onClick: ev => ev.stopPropagation(),
+        children: [m.jsxs("div", {
+          className: "flex items-center justify-between px-6 py-4 border-b border-gray-100 " + (teamType === "MO" ? "bg-gradient-to-r from-emerald-600 to-emerald-700" : "bg-gradient-to-r from-pink-500 to-rose-500") + " rounded-t-2xl",
+          children: [m.jsxs("div", {
+            children: [m.jsx("h2", {
+              className: "text-base font-bold text-white",
+              children: (selectedReport ? "Edit" : "Create") + " " + teamType + " Report — " + selectedDate
+            }), m.jsx("p", {
+              className: "text-xs text-white/80 mt-0.5",
+              children: selectedReport ? ("Submitted at " + (selectedReport.submitted_at || "--") + " · " + (selectedReport.user?.name || "")) : "New report for missed date"
+            })]
+          }), m.jsx("button", {
+            onClick: () => { setSelectedReport(null); setEditMode(!1) },
+            className: "text-white/80 hover:text-white",
+            children: m.jsx(p2, { size: 18 })
+          })]
+        }), m.jsx("div", {
+          className: "p-6 max-h-[60vh] overflow-y-auto",
+          children: editMode ? m.jsxs("div", {
+            className: "space-y-4",
+            children: teamType === "MO" ? [
+              // MO form: POS sections + visitation + challenges
+              ...MO_SYSTEM_COLUMNS.map(col => m.jsxs(Je, {
+                className: "p-3",
+                children: [m.jsx("p", {
+                  className: "text-xs font-bold text-gray-600 mb-2",
+                  children: col.label
+                }), m.jsxs("div", {
+                  className: "grid grid-cols-4 gap-2",
+                  children: ["smart", "tpos", "mpos", "total"].map(pt => m.jsxs("div", {
+                    children: [m.jsx("label", {
+                      className: "text-[9px] uppercase text-gray-400",
+                      children: pt
+                    }), m.jsx("input", {
+                      type: "number",
+                      min: 0,
+                      value: (editData[col.key] && editData[col.key][pt]) || 0,
+                      onChange: e => updatePOSField(col.key, pt, e.target.value),
+                      disabled: pt === "total",
+                      className: "w-full px-2 py-1 text-xs border border-gray-200 rounded " + (pt === "total" ? "bg-gray-50 font-bold" : "")
+                    })]
+                  }, pt))
+                })]
+              }, col.key)),
+              // Visitation
+              m.jsxs(Je, {
+                className: "p-3",
+                children: [m.jsx("label", {
+                  className: "text-xs font-bold text-gray-600 block mb-2",
+                  children: "Visitation"
+                }), m.jsx("input", {
+                  type: "number",
+                  min: 0,
+                  value: editData.visitation || 0,
+                  onChange: e => updateField("visitation", parseInt(e.target.value) || 0),
+                  className: "w-24 px-2 py-1 text-sm border border-gray-200 rounded"
+                })]
+              }),
+              // Challenges
+              m.jsxs(Je, {
+                className: "p-3",
+                children: [m.jsx("label", {
+                  className: "text-xs font-bold text-gray-600 block mb-2",
+                  children: "Challenges"
+                }), m.jsx("textarea", {
+                  value: editData.challenges || "",
+                  onChange: e => updateField("challenges", e.target.value),
+                  className: "w-full min-h-[80px] px-3 py-2 text-sm border border-gray-200 rounded-lg resize-y"
+                })]
+              })
+            ] : [
+              // MS form: swap, binding, enrolled, profileCount, visitation, challenges
+              m.jsxs(Je, {
+                className: "p-3",
+                children: [m.jsx("p", {
+                  className: "text-xs font-bold text-gray-600 mb-2",
+                  children: "MS Activity"
+                }), m.jsxs("div", {
+                  className: "grid grid-cols-2 gap-3",
+                  children: [m.jsxs("div", {
+                    children: [m.jsx("label", { className: "text-[9px] uppercase text-gray-400", children: "Swap" }), m.jsx("input", {
+                      type: "number", min: 0,
+                      value: editData.swapCount || 0,
+                      onChange: e => updateField("swapCount", parseInt(e.target.value) || 0),
+                      className: "w-full px-2 py-1 text-sm border border-gray-200 rounded"
+                    })]
+                  }), m.jsxs("div", {
+                    children: [m.jsx("label", { className: "text-[9px] uppercase text-gray-400", children: "Binding" }), m.jsx("input", {
+                      type: "number", min: 0,
+                      value: editData.binding || 0,
+                      onChange: e => updateField("binding", parseInt(e.target.value) || 0),
+                      className: "w-full px-2 py-1 text-sm border border-gray-200 rounded"
+                    })]
+                  }), m.jsxs("div", {
+                    children: [m.jsx("label", { className: "text-[9px] uppercase text-gray-400", children: "Merchant Activity" }), m.jsx("input", {
+                      type: "number", min: 0,
+                      value: editData.enrolled || 0,
+                      onChange: e => updateField("enrolled", parseInt(e.target.value) || 0),
+                      className: "w-full px-2 py-1 text-sm border border-gray-200 rounded"
+                    })]
+                  }), m.jsxs("div", {
+                    children: [m.jsx("label", { className: "text-[9px] uppercase text-gray-400", children: "Profile Collection" }), m.jsx("input", {
+                      type: "number", min: 0,
+                      value: editData.profileCount || 0,
+                      onChange: e => updateField("profileCount", parseInt(e.target.value) || 0),
+                      className: "w-full px-2 py-1 text-sm border border-gray-200 rounded"
+                    })]
+                  }), m.jsxs("div", {
+                    children: [m.jsx("label", { className: "text-[9px] uppercase text-gray-400", children: "Visitation" }), m.jsx("input", {
+                      type: "number", min: 0,
+                      value: editData.visitation || 0,
+                      onChange: e => updateField("visitation", parseInt(e.target.value) || 0),
+                      className: "w-full px-2 py-1 text-sm border border-gray-200 rounded"
+                    })]
+                  })]
+                })]
+              }),
+              // Merchant IDs
+              m.jsxs(Je, {
+                className: "p-3",
+                children: [m.jsx("label", { className: "text-xs font-bold text-gray-600 block mb-2", children: "Merchant IDs (one per line)" }), m.jsx("textarea", {
+                  value: (editData.merchantIds || []).join("\n"),
+                  onChange: e => updateField("merchantIds", e.target.value.split("\n").map(s => s.trim()).filter(Boolean)),
+                  className: "w-full min-h-[60px] px-3 py-2 text-xs font-mono border border-gray-200 rounded-lg resize-y"
+                })]
+              }),
+              // Terminal SNs
+              m.jsxs(Je, {
+                className: "p-3",
+                children: [m.jsx("label", { className: "text-xs font-bold text-gray-600 block mb-2", children: "Terminal S/Ns (one per line)" }), m.jsx("textarea", {
+                  value: (editData.terminalSNs || []).join("\n"),
+                  onChange: e => updateField("terminalSNs", e.target.value.split("\n").map(s => s.trim()).filter(Boolean)),
+                  className: "w-full min-h-[60px] px-3 py-2 text-xs font-mono border border-gray-200 rounded-lg resize-y"
+                })]
+              }),
+              // Challenges
+              m.jsxs(Je, {
+                className: "p-3",
+                children: [m.jsx("label", { className: "text-xs font-bold text-gray-600 block mb-2", children: "Challenges" }), m.jsx("textarea", {
+                  value: editData.challenge || "",
+                  onChange: e => updateField("challenge", e.target.value),
+                  className: "w-full min-h-[80px] px-3 py-2 text-sm border border-gray-200 rounded-lg resize-y"
+                })]
+              })
+            ]
+          }) : (selectedReport ? m.jsx(KU, {
+            report: selectedReport,
+            isExpanded: true,
+            onToggle: () => {},
+            tasks: tasks
+          }) : null)
+        }), editMode && m.jsxs("div", {
+          className: "flex gap-2 p-4 border-t border-gray-100",
+          children: [m.jsx(ht, {
+            variant: "outline",
+            onClick: () => {
+              if (selectedReport) { setEditMode(!1); setEditData(selectedReport.data || {}) }
+              else { setSelectedReport(null); setEditMode(!1) }
+            },
+            className: "flex-1",
+            children: "Cancel"
+          }), m.jsx(ht, {
+            onClick: handleSave,
+            disabled: saving,
+            className: "flex-1 " + (teamType === "MO" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-pink-500 hover:bg-pink-600"),
+            children: saving ? "Saving..." : (selectedReport ? "Save Changes" : "Create Report")
+          })]
+        })]
+      })]
+    })]
+  });
+}
+
 function tz() {
   const {
     user: e
@@ -53905,7 +54557,7 @@ function tz() {
           }), m.jsxs("div", {
             className: "text-right shrink-0",
             children: [m.jsx("div", {
-              className: "text-2xl font-extrabold text-emerald-600",
+              className: "text-lg font-extrabold text-emerald-600",
               children: p.score
             }), m.jsx("div", {
               className: "text-[10px] font-bold text-gray-400 uppercase",
@@ -55606,7 +56258,7 @@ function Lz() {
           ...F,
           data: _refreshed?.data || F.data,
           user: e
-        }, T)).then(_ok => {
+        }, T, n)).then(_ok => {
           _ok ? ui.success("Report copied to clipboard — paste in your group") :
             ui.info("Report submitted. Tap the copy button to share.")
         });
@@ -55665,7 +56317,7 @@ function Lz() {
               ...o,
               data: o?.data || y,
               user: e
-            }, T);
+            }, T, n);
             // copyReportToClipboard tries 3 strategies; the sync fallback
             // (execCommand) needs to run inside the user gesture, so we
             // don't await before calling it.
@@ -55737,19 +56389,23 @@ function Lz() {
       })
     }), m.jsx("div", {
       className: "space-y-3",
-      children: n.map(N => m.jsx(Fz, {
-        task: N,
-        value: y[N.key || N.id],
-        customValue: y.custom?.[N.id],
-        onChange: F => {
-          N.system ? S(N.key || N.id, F) : S("custom", {
-            ...y.custom,
-            [N.id]: F
-          })
-        },
-        onPOSChange: (F, U) => C(N.key || N.id, F, U),
-        posData: y[N.key || N.id] || {}
-      }, N.id))
+      children: n.map(N => {
+        // For POS sections, use canonical key so preview can find the data
+        const storageKey = N.type === "pos_section" ? (getMOCanonicalKey(N) || N.key || N.id) : (N.key || N.id);
+        return m.jsx(Fz, {
+          task: N,
+          value: y[storageKey],
+          customValue: y.custom?.[N.id],
+          onChange: F => {
+            N.system ? S(storageKey, F) : S("custom", {
+              ...y.custom,
+              [N.id]: F
+            })
+          },
+          onPOSChange: (F, U) => C(storageKey, F, U),
+          posData: y[storageKey] || {}
+        }, N.id)
+      })
     }), m.jsxs("div", {
       className: "flex gap-3",
       children: [m.jsx(ht, {
@@ -56423,6 +57079,9 @@ function Vz() {
                 path: "reports",
                 element: m.jsx(ez, {})
               }), m.jsx(Lt, {
+                path: "calendar",
+                element: m.jsx(SupervisorCalendar, { teamType: "MO" })
+              }), m.jsx(Lt, {
                 path: "ranking",
                 element: m.jsx(tz, {})
               })]
@@ -56439,6 +57098,9 @@ function Vz() {
               }), m.jsx(Lt, {
                 path: "reports",
                 element: m.jsx(nz, {})
+              }), m.jsx(Lt, {
+                path: "calendar",
+                element: m.jsx(SupervisorCalendar, { teamType: "MS" })
               }), m.jsx(Lt, {
                 path: "ranking",
                 element: m.jsx(az, {})
