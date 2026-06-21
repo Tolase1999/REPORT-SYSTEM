@@ -27289,9 +27289,19 @@ const _j = [
     path: "/mo/report",
     roles: ["mo"]
   }, {
+    label: "My History",
+    icon: "Calendar",
+    path: "/mo/history",
+    roles: ["mo"]
+  }, {
     label: "My Report",
     icon: "FileText",
     path: "/ms/report",
+    roles: ["ms"]
+  }, {
+    label: "My History",
+    icon: "Calendar",
+    path: "/ms/history",
     roles: ["ms"]
   }];
 
@@ -53899,6 +53909,184 @@ function ez() {
   })
 }
 
+// Read-only report history for MO/MS users.
+// Shows a monthly list of their own submitted reports.
+// Clicking a date shows the report details (read-only, no edit).
+// teamType: "MO" or "MS"
+function MyReportHistory({ teamType }) {
+  const { user: e } = Qn(),
+    [currentMonth, setCurrentMonth] = E.useState(() => {
+      const d = new Date();
+      return { year: d.getFullYear(), month: d.getMonth() };
+    }),
+    [reports, setReports] = E.useState([]),
+    [tasks, setTasks] = E.useState([]),
+    [selectedReport, setSelectedReport] = E.useState(null),
+    [loading, setLoading] = E.useState(!0);
+
+  E.useEffect(() => {
+    ph().then(setTasks).catch(() => {});
+  }, []);
+
+  E.useEffect(() => {
+    if (!e) return;
+    (async () => {
+      setLoading(!0);
+      try {
+        const startDate = new Date(currentMonth.year, currentMonth.month, 1).toISOString().split("T")[0];
+        const endDate = new Date(currentMonth.year, currentMonth.month + 1, 0).toISOString().split("T")[0];
+        const scope = {
+          canViewMO: teamType === "MO",
+          canViewMS: teamType === "MS",
+          canViewAllMarkets: !1,
+          canViewAllStaff: !1,
+          allowedMarketIds: [],
+          allowedUserIds: [e.id],
+          canManage: !1,
+          canSubmitReports: !1
+        };
+        const rpts = await rL(scope, { from: startDate, to: endDate, type: teamType });
+        setReports(rpts);
+      } catch (err) {
+        console.error("Failed to load reports:", err);
+      } finally {
+        setLoading(!1);
+      }
+    })();
+  }, [e, currentMonth, teamType]);
+
+  const today = new Date().toISOString().split("T")[0];
+  const reportsByDate = {};
+  reports.forEach(r => { if (r.date) reportsByDate[r.date] = r; });
+
+  const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+  const firstDay = new Date(currentMonth.year, currentMonth.month, 1);
+  const lastDay = new Date(currentMonth.year, currentMonth.month + 1, 0);
+  const daysInMonth = lastDay.getDate();
+  const startWeekday = firstDay.getDay();
+  const days = [];
+  for (let i = 0; i < startWeekday; i++) days.push(null);
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = new Date(currentMonth.year, currentMonth.month, d).toISOString().split("T")[0];
+    days.push(dateStr);
+  }
+
+  const submittedCount = reports.length;
+
+  return m.jsxs("div", {
+    className: "space-y-4",
+    children: [m.jsxs("div", {
+      children: [m.jsxs("h1", {
+        className: "text-base font-extrabold text-gray-800 flex items-center gap-2",
+        children: [m.jsx(Ml, {
+          className: teamType === "MO" ? "text-emerald-600" : "text-pink-500",
+          size: 18
+        }), "My Report History"]
+      }), m.jsx("p", {
+        className: "text-[10px] text-gray-400 mt-0.5",
+        children: "View your previously submitted reports"
+      })]
+    }), m.jsxs(Je, {
+      className: "p-3",
+      children: [m.jsxs("div", {
+        className: "flex items-center justify-between mb-3",
+        children: [m.jsx(ht, {
+          variant: "outline",
+          size: "sm",
+          onClick: () => setCurrentMonth(prev => {
+            const d = new Date(prev.year, prev.month - 1, 1);
+            return { year: d.getFullYear(), month: d.getMonth() };
+          }),
+          children: m.jsx(x3, { size: 16 })
+        }), m.jsxs("h3", {
+          className: "text-xs font-bold text-gray-800",
+          children: [monthNames[currentMonth.month], " ", currentMonth.year, " (", submittedCount, " submitted)"]
+        }), m.jsx(ht, {
+          variant: "outline",
+          size: "sm",
+          onClick: () => setCurrentMonth(prev => {
+            const d = new Date(prev.year, prev.month + 1, 1);
+            return { year: d.getFullYear(), month: d.getMonth() };
+          }),
+          children: m.jsx(s3, { size: 16 })
+        })]
+      }), m.jsx("div", {
+        className: "space-y-1 max-h-[400px] overflow-y-auto",
+        children: days.filter(d => d).reverse().map((dateStr, i) => {
+          const day = parseInt(dateStr.split("-")[2]);
+          const hasReport = !!reportsByDate[dateStr];
+          const isPast = dateStr < today;
+          const isToday = dateStr === today;
+          const isFuture = dateStr > today;
+          const rpt = reportsByDate[dateStr];
+          const dateObj = new Date(dateStr + "T12:00:00");
+          const weekday = dateObj.toLocaleDateString("en-GB", { weekday: "short" });
+          return m.jsx("button", {
+            onClick: () => hasReport && setSelectedReport(rpt),
+            disabled: !hasReport,
+            className: "w-full flex items-center gap-3 p-2 rounded-lg border transition-all text-left "
+              + (hasReport ? "cursor-pointer " : "cursor-default ")
+              + (isToday ? "bg-blue-50 border-blue-300 " : "")
+              + (!isToday && hasReport ? "bg-emerald-50/50 border-emerald-100 hover:bg-emerald-50 hover:border-emerald-300 " : "")
+              + (!isToday && !hasReport && isPast ? "bg-red-50/30 border-red-100 " : "")
+              + (!isToday && isFuture ? "bg-gray-50/30 border-gray-100 " : ""),
+            children: m.jsxs(m.Fragment, {
+              children: [
+                m.jsx("span", { className: "text-xs text-gray-400 font-medium w-8 shrink-0", children: weekday }),
+                m.jsx("span", { className: "text-sm font-bold text-gray-700 w-6 shrink-0", children: day }),
+                m.jsx("span", {
+                  className: "text-xs shrink-0",
+                  children: hasReport ? "✅" : (isPast ? "❌" : "⬜")
+                }),
+                m.jsx("span", {
+                  className: "text-xs font-medium flex-1 "
+                    + (hasReport ? "text-emerald-600" : (isPast ? "text-red-400" : "text-gray-400")),
+                  children: hasReport ? ("Submitted" + (rpt?.submitted_at ? " " + rpt.submitted_at : "")) : (isPast ? "Not submitted" : "Future")
+                }),
+                hasReport && m.jsx(ys, { size: 14, className: "text-emerald-500 shrink-0" })
+              ]
+            })
+          }, i);
+        })
+      })]
+    }), selectedReport && m.jsxs("div", {
+      className: "fixed inset-0 z-50 bg-black/50 flex items-start justify-center p-4 overflow-y-auto",
+      onClick: () => setSelectedReport(null),
+      children: [m.jsxs(Je, {
+        className: "bg-white rounded-2xl shadow-2xl w-full max-w-2xl mt-4 mb-8",
+        onClick: ev => ev.stopPropagation(),
+        children: [m.jsxs("div", {
+          className: "flex items-center justify-between px-6 py-4 border-b border-gray-100 "
+            + (teamType === "MO" ? "bg-gradient-to-r from-emerald-600 to-emerald-700" : "bg-gradient-to-r from-pink-500 to-rose-500")
+            + " rounded-t-2xl",
+          children: [m.jsxs("div", {
+            children: [m.jsx("h2", {
+              className: "text-base font-bold text-white",
+              children: teamType + " Report — " + selectedReport.date
+            }), m.jsx("p", {
+              className: "text-xs text-white/80 mt-0.5",
+              children: "Submitted at " + (selectedReport.submitted_at || "--")
+            })]
+          }), m.jsx("button", {
+            onClick: () => setSelectedReport(null),
+            className: "text-white/80 hover:text-white",
+            children: m.jsx(p2, { size: 18 })
+          })]
+        }), m.jsx("div", {
+          className: "p-6 max-h-[60vh] overflow-y-auto",
+          children: m.jsx(KU, {
+            report: selectedReport,
+            isExpanded: true,
+            onToggle: () => {},
+            tasks: tasks
+          })
+        })]
+      })]
+    })]
+  });
+}
+
 // Calendar view for MO/MS supervisors.
 // Shows a monthly calendar with color-coded dates:
 //   - Green: report submitted
@@ -54410,7 +54598,9 @@ function SupervisorCalendar({ teamType }) {
 function tz() {
   const {
     user: e
-  } = Qn(), [fromDate, setFromDate] = E.useState(() => new Date().toISOString().split("T")[0]), [toDate, setToDate] = E.useState(() => new Date().toISOString().split("T")[0]), [n, s] = E.useState([]), [o, l] = E.useState(!0), u = E.useCallback(async () => {
+  } = Qn(), [fromDate, setFromDate] = E.useState(() => new Date().toISOString().split("T")[0]), [toDate, setToDate] = E.useState(() => new Date().toISOString().split("T")[0]), [n, s] = E.useState([]), [tasks, setTasks] = E.useState([]), [o, l] = E.useState(!0);
+  E.useEffect(() => { ph().then(setTasks) }, []);
+  const u = E.useCallback(async () => {
     if (e) {
       l(!0);
       try {
@@ -54433,24 +54623,27 @@ function tz() {
           const reports = _.get(S.id) || [],
             reportCount = reports.length,
             latestReport = reports[0] || null;
-          let T = 0, N = 0, F = 0, U = 0, R = 0;
+          let assignedTotal = 0, linkedTotal = 0, swappedTotal = 0, returnedTotal = 0;
           reports.forEach(rep => {
             const k = rep.data || {};
-            T += k.visitation || 0;
-            N += k.assigned?.total || 0;
-            F += k.linked?.total || 0;
-            U += k.swapped?.total || 0;
-            k.custom && Object.values(k.custom).forEach(P => {
-              typeof P == "number" && (R += P)
-            });
+            assignedTotal += readMOPOSField(k, tasks, "assigned").total || 0;
+            linkedTotal += readMOPOSField(k, tasks, "linked").total || 0;
+            swappedTotal += readMOPOSField(k, tasks, "swapped").total || 0;
+            returnedTotal += readMOPOSField(k, tasks, "returned").total || 0;
           });
-          const L = T + N + F + U + R;
+          const L = assignedTotal + linkedTotal + swappedTotal + returnedTotal;
           return {
             user: S,
             report: latestReport,
             reportCount: reportCount,
             score: L,
-            rank: 0
+            rank: 0,
+            breakdown: {
+              assigned: assignedTotal,
+              linked: linkedTotal,
+              swapped: swappedTotal,
+              returned: returnedTotal
+            }
           }
         });
         w.sort((S, C) => C.score - S.score), w.forEach((S, C) => {
@@ -54462,7 +54655,7 @@ function tz() {
         l(!1)
       }
     }
-  }, [e, fromDate, toDate]);
+  }, [e, fromDate, toDate, tasks]);
   E.useEffect(() => {
     u()
   }, [u]);
@@ -54553,6 +54746,12 @@ function tz() {
             }), m.jsx("p", {
               className: "text-[11px] text-gray-400",
               children: p.report ? `Submitted at ${p.report.submitted_at}` : "No report submitted"
+            }), p.breakdown && m.jsx("div", {
+              className: "flex flex-wrap gap-1 mt-1.5",
+              children: Object.entries(p.breakdown).filter(([, v]) => v).map(([k, v]) => m.jsxs("span", {
+                className: "text-[10px] bg-black/5 rounded px-1.5 py-0.5 font-semibold text-gray-500",
+                children: [k === "assigned" ? "Assigned" : k === "linked" ? "Linked" : k === "swapped" ? "Swapped" : k === "returned" ? "Returned" : k, ":", v]
+              }, k))
             })]
           }), m.jsxs("div", {
             className: "text-right shrink-0",
@@ -57131,10 +57330,22 @@ function Vz() {
             children: m.jsx(Lz, {})
           })
         }), m.jsx(Lt, {
+          path: "/mo/history",
+          element: m.jsx(il, {
+            role: "mo",
+            children: m.jsx(MyReportHistory, { teamType: "MO" })
+          })
+        }), m.jsx(Lt, {
           path: "/ms/report",
           element: m.jsx(il, {
             role: "ms",
             children: m.jsx(Iz, {})
+          })
+        }), m.jsx(Lt, {
+          path: "/ms/history",
+          element: m.jsx(il, {
+            role: "ms",
+            children: m.jsx(MyReportHistory, { teamType: "MS" })
           })
         }), m.jsx(Lt, {
           path: "*",
