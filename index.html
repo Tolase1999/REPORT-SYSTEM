@@ -26177,6 +26177,9 @@ function YO({
     }
   }, []);
   E.useEffect(() => {
+    // Sync preview settings from Supabase on app load (so all users share config)
+    syncPreviewFieldConfig();
+    syncPreviewTaskConfig();
     const u = sessionStorage.getItem(Wf.USER);
     if (u) try {
       const d = JSON.parse(u);
@@ -35556,8 +35559,8 @@ function pfmComponent() {
       }));
       setSaved(!1);
     },
-    save = () => {
-      if (setPreviewFieldConfig(cfg)) {
+    save = async () => {
+      if (await setPreviewFieldConfig(cfg)) {
         setSaved(!0);
         ui.success("Preview field settings saved");
         // Notify other components (open tabs / pages) to refresh
@@ -35566,11 +35569,11 @@ function pfmComponent() {
         ui.error("Failed to save settings")
       }
     },
-    reset = () => {
+    reset = async () => {
       if (confirm("Reset all preview fields to visible?")) {
         const def = { ...PREVIEW_FIELDS_DEFAULT };
         setCfg(def);
-        setPreviewFieldConfig(def);
+        await setPreviewFieldConfig(def);
         setSaved(!0);
         ui.success("Preview fields reset to default");
         try { window.dispatchEvent(new Event("preview-fields-changed")) } catch (e) {}
@@ -35721,8 +35724,8 @@ function ptmComponent() {
       });
       setSaved(!1);
     },
-    save = () => {
-      if (setPreviewTaskConfig(cfg)) {
+    save = async () => {
+      if (await setPreviewTaskConfig(cfg)) {
         setSaved(!0);
         ui.success("Preview task columns saved");
         try { window.dispatchEvent(new Event("preview-tasks-changed")) } catch (e) {}
@@ -35730,11 +35733,11 @@ function ptmComponent() {
         ui.error("Failed to save settings")
       }
     },
-    reset = () => {
+    reset = async () => {
       if (confirm("Reset all columns to visible?")) {
         const def = { MS: {}, MO: {} };
         setCfg(def);
-        setPreviewTaskConfig(def);
+        await setPreviewTaskConfig(def);
         setSaved(!0);
         ui.success("Preview task columns reset to default");
         try { window.dispatchEvent(new Event("preview-tasks-changed")) } catch (e) {}
@@ -36432,12 +36435,17 @@ const PREVIEW_FIELDS_DEFAULT = {
 
 const PREVIEW_FIELDS_KEY = "drs_preview_fields";
 
+// In-memory cache for preview field config (synced from Supabase)
+let _previewFieldCache = null;
+
 function getPreviewFieldConfig() {
+  // Return cached version (synced from DB on app load)
+  if (_previewFieldCache) return _previewFieldCache;
+  // Fall back to localStorage if DB hasn't loaded yet
   try {
     const raw = localStorage.getItem(PREVIEW_FIELDS_KEY);
     if (!raw) return { ...PREVIEW_FIELDS_DEFAULT };
     const parsed = JSON.parse(raw);
-    // Merge with defaults so new fields default to visible
     return {
       MO: { ...PREVIEW_FIELDS_DEFAULT.MO, ...(parsed.MO || {}) },
       MS: { ...PREVIEW_FIELDS_DEFAULT.MS, ...(parsed.MS || {}) }
@@ -36447,9 +36455,40 @@ function getPreviewFieldConfig() {
   }
 }
 
-function setPreviewFieldConfig(cfg) {
+// Async: loads config from Supabase app_settings table and caches it.
+// Called on app startup. Falls back to localStorage if DB fails.
+async function syncPreviewFieldConfig() {
   try {
+    const { data, error } = await It.from("app_settings").select("value").eq("key", "preview_fields").single();
+    if (!error && data && data.value) {
+      _previewFieldCache = {
+        MO: { ...PREVIEW_FIELDS_DEFAULT.MO, ...(data.value.MO || {}) },
+        MS: { ...PREVIEW_FIELDS_DEFAULT.MS, ...(data.value.MS || {}) }
+      };
+      // Also update localStorage as backup
+      localStorage.setItem(PREVIEW_FIELDS_KEY, JSON.stringify(_previewFieldCache));
+      return;
+    }
+  } catch (e) { /* fall back to localStorage */ }
+  // Use localStorage version
+  _previewFieldCache = getPreviewFieldConfig();
+}
+
+async function setPreviewFieldConfig(cfg) {
+  try {
+    // Save to localStorage (immediate, for this browser)
     localStorage.setItem(PREVIEW_FIELDS_KEY, JSON.stringify(cfg));
+    _previewFieldCache = cfg;
+    // Save to Supabase (syncs to all users/browsers)
+    const { error } = await It.from("app_settings").upsert({
+      key: "preview_fields",
+      value: cfg,
+      updated_at: new Date().toISOString()
+    }, { onConflict: "key" });
+    if (error) {
+      console.warn("Failed to sync preview fields to DB:", error.message);
+      return !0; // Still return true since localStorage worked
+    }
     return !0
   } catch (e) {
     return !1
@@ -36483,7 +36522,13 @@ const MS_SYSTEM_COLUMNS = [
 
 const PREVIEW_TASKS_KEY = "drs_preview_tasks";
 
+// In-memory cache for preview task config (synced from Supabase)
+let _previewTaskCache = null;
+
 function getPreviewTaskConfig() {
+  // Return cached version (synced from DB on app load)
+  if (_previewTaskCache) return _previewTaskCache;
+  // Fall back to localStorage
   try {
     const raw = localStorage.getItem(PREVIEW_TASKS_KEY);
     if (!raw) return { MS: {}, MO: {} };
@@ -36494,9 +36539,32 @@ function getPreviewTaskConfig() {
   }
 }
 
-function setPreviewTaskConfig(cfg) {
+// Async: loads config from Supabase and caches it
+async function syncPreviewTaskConfig() {
+  try {
+    const { data, error } = await It.from("app_settings").select("value").eq("key", "preview_tasks").single();
+    if (!error && data && data.value) {
+      _previewTaskCache = { MS: data.value.MS || {}, MO: data.value.MO || {} };
+      localStorage.setItem(PREVIEW_TASKS_KEY, JSON.stringify(_previewTaskCache));
+      return;
+    }
+  } catch (e) { /* fall back */ }
+  _previewTaskCache = getPreviewTaskConfig();
+}
+
+async function setPreviewTaskConfig(cfg) {
   try {
     localStorage.setItem(PREVIEW_TASKS_KEY, JSON.stringify(cfg));
+    _previewTaskCache = cfg;
+    const { error } = await It.from("app_settings").upsert({
+      key: "preview_tasks",
+      value: cfg,
+      updated_at: new Date().toISOString()
+    }, { onConflict: "key" });
+    if (error) {
+      console.warn("Failed to sync preview tasks to DB:", error.message);
+      return !0
+    }
     return !0
   } catch (e) {
     return !1
