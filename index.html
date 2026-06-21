@@ -36037,6 +36037,15 @@ async function aE(e, t) {
   return vu(r)
 }
 
+// Deletes a report by ID. Used by admin/supervisor to remove incorrect entries.
+async function deleteReport(e) {
+  const {
+    error: t
+  } = await It.from("reports").delete().eq("id", e);
+  if (t) throw new Error(`Failed to delete report: ${t.message}`);
+  return !0
+}
+
 function vu(e) {
   return e && {
     ...e,
@@ -52547,7 +52556,19 @@ function Eh({
             report: H,
             isExpanded: S === H.id,
             onToggle: () => C(S === H.id ? null : H.id),
-            tasks: p
+            tasks: p,
+            userRole: n,
+            onDelete: async (report) => {
+              if (confirm("Delete this report? This cannot be undone.")) {
+                try {
+                  await deleteReport(report.id);
+                  ui.success("Report deleted");
+                  fe();
+                } catch (err) {
+                  ui.error(err.message || "Failed to delete report");
+                }
+              }
+            }
           }, H.id))
         })]
       }, D))
@@ -52640,7 +52661,9 @@ function KU({
   report: e,
   isExpanded: t,
   onToggle: r,
-  tasks: Q
+  tasks: Q,
+  userRole: userRole,
+  onDelete: onDelete
 }) {
   const n = e.type === "MO",
     s = e.market,
@@ -52712,6 +52735,11 @@ function KU({
       }) : m.jsx(sg, {
         size: 16,
         className: "text-gray-400 shrink-0"
+      }), (userRole === "admin" || userRole === "mo_supervisor" || userRole === "ms_supervisor" || userRole === "manager") && t && m.jsx("button", {
+        onClick: ev => { ev.stopPropagation(); onDelete && onDelete(e) },
+        className: "ml-1 p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors shrink-0",
+        title: "Delete report",
+        children: m.jsx(dg, { size: 16 })
       })]
     }), t && m.jsx("div", {
       className: "border-t px-4 py-4 bg-white",
@@ -54656,6 +54684,31 @@ function SupervisorCalendar({ teamType }) {
             disabled: saving,
             className: "flex-1 " + (teamType === "MO" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-pink-500 hover:bg-pink-600"),
             children: saving ? "Saving..." : (selectedReport ? "Save Changes" : "Create Report")
+          }), selectedReport && m.jsx(ht, {
+            onClick: async () => {
+              if (confirm("Delete this report? This cannot be undone.")) {
+                try {
+                  await deleteReport(selectedReport.id);
+                  ui.success("Report deleted");
+                  setSelectedReport(null);
+                  setEditMode(!1);
+                  const startDate = new Date(currentMonth.year, currentMonth.month, 1).toISOString().split("T")[0];
+                  const endDate = new Date(currentMonth.year, currentMonth.month + 1, 0).toISOString().split("T")[0];
+                  const scope = {
+                    canViewMO: teamType === "MO", canViewMS: teamType === "MS",
+                    canViewAllMarkets: !1, canViewAllStaff: !1,
+                    allowedMarketIds: [], allowedUserIds: [selectedStaff],
+                    canManage: !1, canSubmitReports: !1
+                  };
+                  setReports(await rL(scope, { from: startDate, to: endDate, type: teamType }));
+                } catch (err) {
+                  ui.error(err.message || "Failed to delete report");
+                }
+              }
+            },
+            variant: "outline",
+            className: "flex-1 border-red-300 text-red-600 hover:bg-red-50",
+            children: "Delete"
           })]
         })]
       })]
