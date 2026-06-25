@@ -52976,11 +52976,11 @@ function XU({
     show: h.length > 0
   }];
   return m.jsx("div", {
-    className: "fixed inset-0 z-50 bg-black/50 flex items-start justify-center p-4 overflow-y-auto",
+    className: "fixed inset-0 z-50 bg-black/50 flex items-stretch justify-center overflow-hidden",
     children: m.jsxs("div", {
-      className: "bg-white rounded-2xl shadow-2xl w-full max-w-7xl mt-4 mb-8",
+      className: "bg-white shadow-2xl w-full h-full flex flex-col",
       children: [m.jsxs("div", {
-        className: "flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-emerald-600 to-emerald-700 rounded-t-2xl",
+        className: "flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-emerald-600 to-emerald-700",
         children: [m.jsxs("div", {
           children: [m.jsx("h2", {
             className: "text-base font-bold text-white",
@@ -53018,9 +53018,9 @@ function XU({
           }, _.id)
         })
       }), m.jsxs("div", {
-        className: "p-6",
+        className: "p-6 flex-1 overflow-hidden flex flex-col",
         children: [l === "summary" && m.jsxs("div", {
-          className: "space-y-4",
+          className: "space-y-4 overflow-y-auto flex-1",
           children: [m.jsx("div", {
             className: "grid grid-cols-2 sm:grid-cols-5 gap-3",
             children: [{
@@ -53084,7 +53084,7 @@ function XU({
             })
           })]
         }), l === "mo" && m.jsx("div", {
-          className: "overflow-auto max-h-[65vh]",
+          className: "overflow-auto max-h-[65vh] flex-1",
           children: m.jsxs("table", {
             className: "text-[11px] border-collapse w-full",
             style: {
@@ -53114,17 +53114,17 @@ function XU({
                 }), m.jsx("th", {
                   rowSpan: 2,
                   className: "border border-black px-2 py-1 text-center font-bold whitespace-nowrap sticky-col",
-                  style: { position: "sticky", left: "70px", background: "#FFFF00", zIndex: 11 },
+                  style: { position: "sticky", left: "70px", background: "#FFFF00", zIndex: 11, width: 110, minWidth: 110, maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis" },
                   children: "Market"
                 }), m.jsx("th", {
                   rowSpan: 2,
                   className: "border border-black px-2 py-1 text-center font-bold whitespace-nowrap sticky-col",
-                  style: { position: "sticky", left: "180px", background: "#FFFF00", zIndex: 11 },
+                  style: { position: "sticky", left: "180px", background: "#FFFF00", zIndex: 11, width: 80, minWidth: 80, maxWidth: 80, overflow: "hidden", textOverflow: "ellipsis" },
                   children: "City"
                 }), m.jsx("th", {
                   rowSpan: 2,
                   className: "border border-black px-2 py-1 text-center font-bold whitespace-nowrap sticky-col",
-                  style: { position: "sticky", left: "260px", background: "#FFFF00", zIndex: 11 },
+                  style: { position: "sticky", left: "260px", background: "#FFFF00", zIndex: 11, width: 120, minWidth: 120, maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis" },
                   children: "MO Name"
                 }), moPosCols.map(col => m.jsx("th", {
                   colSpan: 4,
@@ -53202,15 +53202,15 @@ function XU({
                     children: _.date
                   }), m.jsx("td", {
                     className: "border border-gray-300 px-2 py-1 font-bold sticky-col",
-                    style: { position: "sticky", left: "70px", background: w % 2 === 0 ? "#fff" : "#f9fafb", zIndex: 5 },
+                    style: { position: "sticky", left: "70px", background: w % 2 === 0 ? "#fff" : "#f9fafb", zIndex: 5, width: 110, minWidth: 110, maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis" },
                     children: C.name || ""
                   }), m.jsx("td", {
                     className: "border border-gray-300 px-2 py-1 text-center sticky-col",
-                    style: { position: "sticky", left: "180px", background: w % 2 === 0 ? "#fff" : "#f9fafb", zIndex: 5 },
+                    style: { position: "sticky", left: "180px", background: w % 2 === 0 ? "#fff" : "#f9fafb", zIndex: 5, width: 80, minWidth: 80, maxWidth: 80, overflow: "hidden", textOverflow: "ellipsis" },
                     children: C.city || S.city || ""
                   }), m.jsx("td", {
                     className: "border border-gray-300 px-2 py-1 sticky-col",
-                    style: { position: "sticky", left: "260px", background: w % 2 === 0 ? "#fff" : "#f9fafb", zIndex: 5 },
+                    style: { position: "sticky", left: "260px", background: w % 2 === 0 ? "#fff" : "#f9fafb", zIndex: 5, width: 120, minWidth: 120, maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis" },
                     children: S.moName || k.name || ""
                   }), moPosCols.map(col => {
                     const N = getMOCellValue(S, col, n);
@@ -53259,7 +53259,7 @@ function XU({
             })]
           })
         }), l === "ms" && m.jsx("div", {
-          className: "space-y-6 max-h-[65vh] overflow-y-auto",
+          className: "space-y-6 max-h-[65vh] overflow-y-auto flex-1",
           children: [...new Set(h.map(_ => _.date))].sort().map(_ => {
             const w = h.filter(N => N.date === _),
               S = new Date(_ + "T12:00:00").toLocaleDateString("en-GB", {
