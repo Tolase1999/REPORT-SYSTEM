@@ -25887,7 +25887,7 @@ function UO(e) {
 }
 
 function zO(e) {
-  return e === "admin"
+  return e === "admin" || e === "mo_supervisor" || e === "ms_supervisor" || e === "manager"
 }
 
 function HO(e) {
@@ -52673,12 +52673,12 @@ function KU({
     u = parseInt(String(l.swapCount || 0)) + _bindingVal + parseInt(String(l.enrolled || 0)) + parseInt(String(l.profileCount || 0)),
     h = n ? ["stock_new", "stock_rep", "stock_rr", "faulty"].reduce((p, k) => p + (readMOPOSField(l, Q, k)?.total || 0), 0) : 0;
   return m.jsxs(Je, {
-    className: `overflow-hidden transition-all ${n?"border-l-4 border-l-emerald-400 border border-emerald-100":"border-l-4 border-l-pink-400 border border-pink-100"}`,
+    className: `overflow-hidden transition-all ${n?"border-l-4 border-l-emerald-400 border border-emerald-100":"border-l-4 border-l-emerald-400 border border-emerald-100"}`,
     children: [m.jsxs("div", {
-      className: `flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${t?n?"bg-emerald-50/60":"bg-pink-50/60":"hover:bg-gray-50"}`,
+      className: `flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${t?n?"bg-emerald-50/60":"bg-emerald-50/60":"hover:bg-gray-50"}`,
       onClick: r,
       children: [m.jsx("span", {
-        className: `text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full shrink-0 ${n?"bg-emerald-100 text-emerald-700":"bg-pink-100 text-pink-700"}`,
+        className: `text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full shrink-0 ${n?"bg-emerald-100 text-emerald-700":"bg-emerald-100 text-emerald-700"}`,
         children: e.type
       }), m.jsxs("div", {
         className: "flex-1 min-w-0",
@@ -52719,7 +52719,7 @@ function KU({
           })]
         }) : m.jsxs(m.Fragment, {
           children: [parseInt(String(l.swapCount || 0)) > 0 && m.jsxs("span", {
-            className: "text-[10px] bg-pink-50 text-pink-700 border border-pink-200 rounded-full px-2 py-0.5 font-bold",
+            className: "text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full px-2 py-0.5 font-bold",
             children: [l.swapCount, " Swap"]
           }), _bindingVal > 0 && m.jsxs("span", {
             className: "text-[10px] bg-purple-50 text-purple-700 border border-purple-200 rounded-full px-2 py-0.5 font-bold",
@@ -52806,7 +52806,7 @@ function KU({
           children: [isPreviewFieldVisible("MS", "swap") && m.jsx(ds, {
             label: "Swap",
             value: parseInt(String(l.swapCount || 0)),
-            accent: "text-pink-600"
+            accent: "text-emerald-600"
           }), isPreviewFieldVisible("MS", "binding") && m.jsx(ds, {
             label: "POS Loc. Binding",
             value: _bindingVal,
@@ -52839,7 +52839,7 @@ function KU({
               className: "text-[11px] font-semibold text-gray-500",
               children: "Swap Count"
             }), m.jsx("span", {
-              className: "text-xs font-bold text-pink-600",
+              className: "text-xs font-bold text-emerald-600",
               children: parseInt(String(l.swapCount || 0))
             })]
           }), isPreviewFieldVisible("MS", "binding") && m.jsxs("div", {
@@ -52906,12 +52906,12 @@ function KU({
               children: (l.merchantIds || []).length
             })]
           }), isPreviewFieldVisible("MS", "total") && m.jsxs("div", {
-            className: "flex items-center justify-between py-2 mt-1 bg-pink-50 rounded-lg px-2",
+            className: "flex items-center justify-between py-2 mt-1 bg-emerald-50 rounded-lg px-2",
             children: [m.jsx("span", {
               className: "text-[11px] font-bold text-gray-700 uppercase",
               children: "Activity Total"
             }), m.jsxs("span", {
-              className: "text-sm font-extrabold text-pink-600",
+              className: "text-sm font-extrabold text-emerald-600",
               children: [u, " (Swap + Binding + Merch + Profile)"]
             })]
           })]
@@ -53690,9 +53690,9 @@ function BT({
     submittedCard: "bg-emerald-50 border-emerald-200",
     iconBg: "bg-emerald-500"
   } : {
-    icon: "text-pink-500",
-    submittedCard: "bg-pink-50 border-pink-200",
-    iconBg: "bg-pink-500"
+    icon: "text-emerald-500",
+    submittedCard: "bg-emerald-50 border-emerald-200",
+    iconBg: "bg-emerald-500"
   };
   if (s) return m.jsx(Je, {
     className: "p-6",
@@ -54007,7 +54007,9 @@ function ez() {
 
 // Read-only report history for MO/MS users.
 // Shows a monthly list of their own submitted reports.
-// Clicking a date shows the report details (read-only, no edit).
+// MO/MS staff CANNOT edit past reports from this view (prevents manipulation).
+// Only supervisors/admins/managers can edit reports — via SupervisorCalendar
+// (Calendar menu) or the Report Database (delete button on expanded cards).
 // teamType: "MO" or "MS"
 function MyReportHistory({ teamType }) {
   const { user: e } = Qn(),
@@ -54069,6 +54071,8 @@ function MyReportHistory({ teamType }) {
   }
 
   const submittedCount = reports.length;
+  const accentColor = teamType === "MO" ? "text-emerald-600" : "text-emerald-600";
+  const accentGradient = "bg-gradient-to-r from-emerald-600 to-emerald-700";
 
   return m.jsxs("div", {
     className: "space-y-4",
@@ -54076,7 +54080,7 @@ function MyReportHistory({ teamType }) {
       children: [m.jsxs("h1", {
         className: "text-base font-extrabold text-gray-800 flex items-center gap-2",
         children: [m.jsx(Ml, {
-          className: teamType === "MO" ? "text-emerald-600" : "text-pink-500",
+          className: accentColor,
           size: 18
         }), "My Report History"]
       }), m.jsx("p", {
@@ -54153,9 +54157,7 @@ function MyReportHistory({ teamType }) {
         className: "bg-white rounded-2xl shadow-2xl w-full max-w-2xl mt-4 mb-8",
         onClick: ev => ev.stopPropagation(),
         children: [m.jsxs("div", {
-          className: "flex items-center justify-between px-6 py-4 border-b border-gray-100 "
-            + (teamType === "MO" ? "bg-gradient-to-r from-emerald-600 to-emerald-700" : "bg-gradient-to-r from-pink-500 to-rose-500")
-            + " rounded-t-2xl",
+          className: "flex items-center justify-between px-6 py-4 border-b border-gray-100 " + accentGradient + " rounded-t-2xl",
           children: [m.jsxs("div", {
             children: [m.jsx("h2", {
               className: "text-base font-bold text-white",
@@ -54383,6 +54385,17 @@ function SupervisorCalendar({ teamType }) {
     setEditData(prev => ({ ...prev, [fieldKey]: value }));
   };
 
+  // Helper to update a custom task value (stored at editData.custom[taskId])
+  const updateCustomField = (taskId, value) => {
+    setEditData(prev => ({ ...prev, custom: { ...(prev.custom || {}), [taskId]: value } }));
+  };
+
+  // Helper to update an array field (mid_list / sn_list) from textarea input
+  const updateArrayField = (fieldKey, text) => {
+    const arr = text.split("\n").map(s => s.trim()).filter(Boolean);
+    setEditData(prev => ({ ...prev, [fieldKey]: arr }));
+  };
+
   const submittedCount = reports.length;
   const expectedDays = days.filter(d => d && d <= today && new Date(d).getDay() !== 0).length;
   const missedDays = Math.max(0, expectedDays - submittedCount);
@@ -54520,149 +54533,62 @@ function SupervisorCalendar({ teamType }) {
         className: "bg-white rounded-2xl shadow-2xl w-full max-w-2xl mt-4 mb-8",
         onClick: ev => ev.stopPropagation(),
         children: [m.jsxs("div", {
-          className: "flex items-center justify-between px-6 py-4 border-b border-gray-100 " + (teamType === "MO" ? "bg-gradient-to-r from-emerald-600 to-emerald-700" : "bg-gradient-to-r from-pink-500 to-rose-500") + " rounded-t-2xl",
+          className: "flex items-center justify-between px-6 py-4 border-b border-gray-100 " + (teamType === "MO" ? "bg-gradient-to-r from-emerald-600 to-emerald-700" : "bg-gradient-to-r from-emerald-600 to-emerald-700") + " rounded-t-2xl",
           children: [m.jsxs("div", {
             children: [m.jsx("h2", {
               className: "text-base font-bold text-white",
-              children: (selectedReport ? "Edit" : "Create") + " " + teamType + " Report — " + selectedDate
+              children: (editMode ? (selectedReport ? "Edit" : "Create") : "View") + " " + teamType + " Report — " + selectedDate
             }), m.jsx("p", {
               className: "text-xs text-white/80 mt-0.5",
               children: selectedReport ? ("Submitted at " + (selectedReport.submitted_at || "--") + " · " + (selectedReport.user?.name || "")) : "New report for missed date"
             })]
-          }), m.jsx("button", {
-            onClick: () => { setSelectedReport(null); setEditMode(!1) },
-            className: "text-white/80 hover:text-white",
-            children: m.jsx(p2, { size: 18 })
+          }), m.jsxs("div", {
+            className: "flex items-center gap-2",
+            children: [(!editMode && selectedReport) && m.jsx("button", {
+              onClick: () => { setEditMode(!0); setEditData(selectedReport.data || {}) },
+              className: "text-white/90 hover:text-white flex items-center gap-1 text-xs font-bold bg-white/20 hover:bg-white/30 px-2.5 py-1 rounded-lg transition-colors",
+              title: "Edit this report",
+              children: [m.jsx(cg, { size: 14 }), "Edit"]
+            }), m.jsx("button", {
+              onClick: () => { setSelectedReport(null); setEditMode(!1) },
+              className: "text-white/80 hover:text-white",
+              children: m.jsx(p2, { size: 18 })
+            })]
           })]
         }), m.jsx("div", {
           className: "p-6 max-h-[60vh] overflow-y-auto",
-          children: editMode ? m.jsxs("div", {
-            className: "space-y-4",
-            children: teamType === "MO" ? [
-              // MO form: POS sections + visitation + challenges
-              ...MO_SYSTEM_COLUMNS.map(col => m.jsxs(Je, {
-                className: "p-3",
-                children: [m.jsx("p", {
-                  className: "text-xs font-bold text-gray-600 mb-2",
-                  children: col.label
-                }), m.jsxs("div", {
-                  className: "grid grid-cols-4 gap-2",
-                  children: ["smart", "tpos", "mpos", "total"].map(pt => m.jsxs("div", {
-                    children: [m.jsx("label", {
-                      className: "text-[9px] uppercase text-gray-400",
-                      children: pt
-                    }), m.jsx("input", {
-                      type: "number",
-                      min: 0,
-                      value: (editData[col.key] && editData[col.key][pt]) || 0,
-                      onChange: e => updatePOSField(col.key, pt, e.target.value),
-                      disabled: pt === "total",
-                      className: "w-full px-2 py-1 text-xs border border-gray-200 rounded " + (pt === "total" ? "bg-gray-50 font-bold" : "")
-                    })]
-                  }, pt))
-                })]
-              }, col.key)),
-              // Visitation
-              m.jsxs(Je, {
-                className: "p-3",
-                children: [m.jsx("label", {
-                  className: "text-xs font-bold text-gray-600 block mb-2",
-                  children: "Visitation"
-                }), m.jsx("input", {
-                  type: "number",
-                  min: 0,
-                  value: editData.visitation || 0,
-                  onChange: e => updateField("visitation", parseInt(e.target.value) || 0),
-                  className: "w-24 px-2 py-1 text-sm border border-gray-200 rounded"
-                })]
-              }),
-              // Challenges
-              m.jsxs(Je, {
-                className: "p-3",
-                children: [m.jsx("label", {
-                  className: "text-xs font-bold text-gray-600 block mb-2",
-                  children: "Challenges"
-                }), m.jsx("textarea", {
-                  value: editData.challenges || "",
-                  onChange: e => updateField("challenges", e.target.value),
-                  className: "w-full min-h-[80px] px-3 py-2 text-sm border border-gray-200 rounded-lg resize-y"
-                })]
+          children: editMode ? m.jsx("div", {
+            className: "space-y-3",
+            children: tasks
+              .filter(t => (t.team === teamType || t.team === "Both") && t.active !== !1)
+              .map(task => {
+                if (teamType === "MO") {
+                  // MO task: use Fz component (same as daily submission form)
+                  const storageKey = task.type === "pos_section" ? (getMOCanonicalKey(task) || task.key || task.id) : (task.key || task.id);
+                  return m.jsx(Fz, {
+                    task: task,
+                    value: editData[storageKey],
+                    customValue: editData.custom?.[task.id],
+                    onChange: (val) => {
+                      task.system ? updateField(storageKey, val) : updateCustomField(task.id, val);
+                    },
+                    onPOSChange: (fieldType, val) => updatePOSField(storageKey, fieldType, val),
+                    posData: editData[storageKey] || {}
+                  }, task.id);
+                } else {
+                  // MS task: use Pz component (same as daily submission form)
+                  const storageKey = task.key || task.id;
+                  return m.jsx(Pz, {
+                    task: task,
+                    value: editData[storageKey],
+                    customValue: editData.custom?.[task.id],
+                    onChange: (val) => {
+                      task.system ? updateField(storageKey, val) : updateCustomField(task.id, val);
+                    },
+                    onArrayChange: (fieldKey, text) => updateArrayField(fieldKey, text)
+                  }, task.id);
+                }
               })
-            ] : [
-              // MS form: swap, binding, enrolled, profileCount, visitation, challenges
-              m.jsxs(Je, {
-                className: "p-3",
-                children: [m.jsx("p", {
-                  className: "text-xs font-bold text-gray-600 mb-2",
-                  children: "MS Activity"
-                }), m.jsxs("div", {
-                  className: "grid grid-cols-2 gap-3",
-                  children: [m.jsxs("div", {
-                    children: [m.jsx("label", { className: "text-[9px] uppercase text-gray-400", children: "Swap" }), m.jsx("input", {
-                      type: "number", min: 0,
-                      value: editData.swapCount || 0,
-                      onChange: e => updateField("swapCount", parseInt(e.target.value) || 0),
-                      className: "w-full px-2 py-1 text-sm border border-gray-200 rounded"
-                    })]
-                  }), m.jsxs("div", {
-                    children: [m.jsx("label", { className: "text-[9px] uppercase text-gray-400", children: "Binding" }), m.jsx("input", {
-                      type: "number", min: 0,
-                      value: editData.binding || 0,
-                      onChange: e => updateField("binding", parseInt(e.target.value) || 0),
-                      className: "w-full px-2 py-1 text-sm border border-gray-200 rounded"
-                    })]
-                  }), m.jsxs("div", {
-                    children: [m.jsx("label", { className: "text-[9px] uppercase text-gray-400", children: "Merchant Activity" }), m.jsx("input", {
-                      type: "number", min: 0,
-                      value: editData.enrolled || 0,
-                      onChange: e => updateField("enrolled", parseInt(e.target.value) || 0),
-                      className: "w-full px-2 py-1 text-sm border border-gray-200 rounded"
-                    })]
-                  }), m.jsxs("div", {
-                    children: [m.jsx("label", { className: "text-[9px] uppercase text-gray-400", children: "Profile Collection" }), m.jsx("input", {
-                      type: "number", min: 0,
-                      value: editData.profileCount || 0,
-                      onChange: e => updateField("profileCount", parseInt(e.target.value) || 0),
-                      className: "w-full px-2 py-1 text-sm border border-gray-200 rounded"
-                    })]
-                  }), m.jsxs("div", {
-                    children: [m.jsx("label", { className: "text-[9px] uppercase text-gray-400", children: "Visitation" }), m.jsx("input", {
-                      type: "number", min: 0,
-                      value: editData.visitation || 0,
-                      onChange: e => updateField("visitation", parseInt(e.target.value) || 0),
-                      className: "w-full px-2 py-1 text-sm border border-gray-200 rounded"
-                    })]
-                  })]
-                })]
-              }),
-              // Merchant IDs
-              m.jsxs(Je, {
-                className: "p-3",
-                children: [m.jsx("label", { className: "text-xs font-bold text-gray-600 block mb-2", children: "Merchant IDs (one per line)" }), m.jsx("textarea", {
-                  value: (editData.merchantIds || []).join("\n"),
-                  onChange: e => updateField("merchantIds", e.target.value.split("\n").map(s => s.trim()).filter(Boolean)),
-                  className: "w-full min-h-[60px] px-3 py-2 text-xs font-mono border border-gray-200 rounded-lg resize-y"
-                })]
-              }),
-              // Terminal SNs
-              m.jsxs(Je, {
-                className: "p-3",
-                children: [m.jsx("label", { className: "text-xs font-bold text-gray-600 block mb-2", children: "Terminal S/Ns (one per line)" }), m.jsx("textarea", {
-                  value: (editData.terminalSNs || []).join("\n"),
-                  onChange: e => updateField("terminalSNs", e.target.value.split("\n").map(s => s.trim()).filter(Boolean)),
-                  className: "w-full min-h-[60px] px-3 py-2 text-xs font-mono border border-gray-200 rounded-lg resize-y"
-                })]
-              }),
-              // Challenges
-              m.jsxs(Je, {
-                className: "p-3",
-                children: [m.jsx("label", { className: "text-xs font-bold text-gray-600 block mb-2", children: "Challenges" }), m.jsx("textarea", {
-                  value: editData.challenge || "",
-                  onChange: e => updateField("challenge", e.target.value),
-                  className: "w-full min-h-[80px] px-3 py-2 text-sm border border-gray-200 rounded-lg resize-y"
-                })]
-              })
-            ]
           }) : (selectedReport ? m.jsx(KU, {
             report: selectedReport,
             isExpanded: true,
@@ -54682,7 +54608,7 @@ function SupervisorCalendar({ teamType }) {
           }), m.jsx(ht, {
             onClick: handleSave,
             disabled: saving,
-            className: "flex-1 " + (teamType === "MO" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-pink-500 hover:bg-pink-600"),
+            className: "flex-1 " + (teamType === "MO" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-emerald-600 hover:bg-emerald-700"),
             children: saving ? "Saving..." : (selectedReport ? "Save Changes" : "Create Report")
           }), selectedReport && m.jsx(ht, {
             onClick: async () => {
@@ -54931,8 +54857,8 @@ function rz() {
     k = [{
       label: "MS Markets",
       value: b.length,
-      color: "#9d174d",
-      borderColor: "border-pink-600"
+      color: "#047857",
+      borderColor: "border-emerald-600"
     }, {
       label: "MS Submitted",
       value: _.size,
@@ -54962,7 +54888,7 @@ function rz() {
         children: [m.jsxs("h1", {
           className: "text-xl font-extrabold text-gray-800 flex items-center gap-2",
           children: [m.jsx(I3, {
-            className: "text-pink-500",
+            className: "text-emerald-500",
             size: 22
           }), "MS Supervisor Dashboard"]
         }), m.jsx("p", {
@@ -55000,7 +54926,7 @@ function rz() {
         children: [m.jsxs("h3", {
           className: "text-sm font-bold text-gray-800 mb-4 flex items-center gap-2",
           children: [m.jsx(og, {
-            className: "text-pink-500",
+            className: "text-emerald-500",
             size: 16
           }), "MS Market Status"]
         }), p ? m.jsx("div", {
@@ -55020,7 +54946,7 @@ function rz() {
               F = d.find(U => U.market_id === T.id);
             return m.jsxs("div", {
               className: `flex items-center gap-3 px-4 py-3 rounded-lg border-2 transition-all
-                      ${N?"bg-pink-50 border-pink-200":"bg-red-50 border-red-100"}`,
+                      ${N?"bg-emerald-50 border-emerald-200":"bg-red-50 border-red-100"}`,
               children: [m.jsx("div", {
                 className: `w-2.5 h-2.5 rounded-full shrink-0 ${N?"bg-green-500":"bg-red-400"}`
               }), m.jsxs("div", {
@@ -55033,7 +54959,7 @@ function rz() {
                   children: T.city
                 })]
               }), N ? m.jsxs("span", {
-                className: "text-[10px] font-bold text-pink-600 bg-pink-100 px-2 py-0.5 rounded-full flex items-center gap-1",
+                className: "text-[10px] font-bold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full flex items-center gap-1",
                 children: [m.jsx(ys, {
                   size: 10
                 }), " ", F?.submitted_at]
@@ -55051,7 +54977,7 @@ function rz() {
         children: [m.jsxs("h3", {
           className: "text-sm font-bold text-gray-800 mb-4 flex items-center gap-2",
           children: [m.jsx(f2, {
-            className: "text-pink-500",
+            className: "text-emerald-500",
             size: 16
           }), "Quick Actions"]
         }), m.jsxs("div", {
@@ -55062,7 +54988,7 @@ function rz() {
             onClick: () => t("/ms-supervisor/reports"),
             children: [m.jsx(ao, {
               size: 16,
-              className: "mr-2 text-pink-500"
+              className: "mr-2 text-emerald-500"
             }), "View MS Report Database"]
           }), m.jsxs(ht, {
             variant: "outline",
@@ -55074,9 +55000,9 @@ function rz() {
             }), "View MS Rankings"]
           })]
         }), m.jsx("div", {
-          className: "mt-4 p-3 bg-pink-50 border border-pink-100 rounded-lg",
+          className: "mt-4 p-3 bg-blue-50 border border-blue-100 rounded-lg",
           children: m.jsxs("p", {
-            className: "text-xs text-pink-700 font-medium",
+            className: "text-xs text-blue-700 font-medium",
             children: [m.jsx("strong", {
               children: "Note:"
             }), " As an MS Supervisor, you can only see MS reports from your assigned markets. MO reports are not visible to you."]
@@ -55101,7 +55027,7 @@ function nz() {
       children: [m.jsxs("h1", {
         className: "text-xl font-extrabold text-gray-800 flex items-center gap-2",
         children: [m.jsx(ao, {
-          className: "text-pink-500",
+          className: "text-emerald-600",
           size: 22
         }), "MS Report Database"]
       }), m.jsx("p", {
@@ -55294,7 +55220,7 @@ function az() {
           }), m.jsxs("div", {
             className: "text-right shrink-0",
             children: [m.jsx("div", {
-              className: "text-2xl font-extrabold text-pink-500",
+              className: "text-2xl font-extrabold text-emerald-600",
               children: y.score
             }), m.jsx("div", {
               className: "text-[10px] font-bold text-gray-400 uppercase",
@@ -55451,7 +55377,7 @@ function sz() {
             children: [m.jsxs("div", {
               className: "flex items-center gap-2",
               children: [m.jsx(so, {
-                className: "text-pink-500",
+                className: "text-emerald-500",
                 size: 14
               }), m.jsx("span", {
                 className: "text-sm font-bold text-gray-700",
@@ -55750,7 +55676,7 @@ function oz() {
           }), m.jsxs("div", {
             className: "text-right shrink-0",
             children: [m.jsx("div", {
-              className: `text-2xl font-extrabold ${b.rank===0?"text-gray-400":"text-pink-500"}`,
+              className: `text-2xl font-extrabold ${b.rank===0?"text-gray-400":"text-emerald-500"}`,
               children: b.score
             }), m.jsx("div", {
               className: "text-[10px] font-bold text-gray-400 uppercase",
