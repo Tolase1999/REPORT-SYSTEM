@@ -25812,7 +25812,8 @@ const DO = "https://lbjlbjgvjhuquluvdxau.supabase.co",
     mo_supervisor: "MO Supervisor",
     ms_supervisor: "MS Supervisor",
     mo: "Market Officer",
-    ms: "Merchant Support"
+    ms: "Merchant Support",
+    inactive: "Inactive"
   },
   Cp = {
     admin: {
@@ -25844,6 +25845,11 @@ const DO = "https://lbjlbjgvjhuquluvdxau.supabase.co",
       bg: "bg-rose-50",
       text: "text-rose-800",
       border: "border-rose-200"
+    },
+    inactive: {
+      bg: "bg-gray-100",
+      text: "text-gray-500",
+      border: "border-gray-300"
     }
   },
   FO = {
@@ -25952,6 +25958,10 @@ async function $O(e, t) {
   });
   if (n || !r || !r.length) return null;
   const s = r[0];
+  // Block inactive accounts from logging in
+  if (s.role === "inactive") {
+    throw new Error("This account has been deactivated. Please contact your administrator.");
+  }
   return ng(s)
 }
 async function Ol() {
@@ -26131,7 +26141,7 @@ async function qO(e) {
   const {
     data: t,
     error: r
-  } = await It.from("users").select("*").eq("supervisor_id", e).order("name");
+  } = await It.from("users").select("*").eq("supervisor_id", e).neq("role", "inactive").order("name");
   if (r) throw new Error(`Failed to fetch managed staff: ${r.message}`);
   return t || []
 }
@@ -34930,7 +34940,7 @@ function qD() {
     })]
   })
 }
-const YD = ["admin", "manager", "mo_supervisor", "ms_supervisor", "mo", "ms"];
+const YD = ["admin", "manager", "mo_supervisor", "ms_supervisor", "mo", "ms", "inactive"];
 
 function KD() {
   const [e, t] = E.useState([]), [r, n] = E.useState([]), [s, o] = E.useState(!0), [l, u] = E.useState(!1), [d, h] = E.useState(null), [p, g] = E.useState(""), [y, b] = E.useState(""), [_, w] = E.useState("mo"), [S, C] = E.useState(""), [k, T] = E.useState(""), [N, F] = E.useState(""), U = async () => {
@@ -34982,9 +34992,9 @@ function KD() {
           pe.includes("role_check") || pe.includes("check constraint") || pe.includes("23514") ? ee(`DB migration needed — run this SQL block in Supabase:
 
 UPDATE users SET role = 'ms_supervisor' WHERE role = 'supervisor';
-UPDATE users SET role = 'mo' WHERE role NOT IN ('admin','manager','mo_supervisor','ms_supervisor','mo','ms');
+UPDATE users SET role = 'mo' WHERE role NOT IN ('admin','manager','mo_supervisor','ms_supervisor','mo','ms','inactive');
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
-ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin','manager','mo_supervisor','ms_supervisor','mo','ms'));`) : ee(pe)
+ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin','manager','mo_supervisor','ms_supervisor','mo','ms','inactive'));`) : ee(pe)
         }
       }
     }, he = async fe => {
@@ -35146,11 +35156,14 @@ ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin','manag
                 }), m.jsx(ft, {
                   value: "ms",
                   children: "Merchant Support (MS)"
+                }), m.jsx(ft, {
+                  value: "inactive",
+                  children: "Inactive (disable account)"
                 })]
               })]
             }), m.jsxs("p", {
               className: "text-[10px] text-gray-400 mt-1",
-              children: [_ === "mo_supervisor" && "Can only see MO reports from assigned markets", _ === "ms_supervisor" && "Can only see MS reports from assigned markets", _ === "admin" && "Full system access", _ === "manager" && "Can view all MS data across all markets"]
+              children: [_ === "mo_supervisor" && "Can only see MO reports from assigned markets", _ === "ms_supervisor" && "Can only see MS reports from assigned markets", _ === "admin" && "Full system access", _ === "manager" && "Can view all MS data across all markets", _ === "inactive" && "Account is disabled — user cannot log in and will not appear on supervisor pages"]
             })]
           }), m.jsxs("div", {
             children: [m.jsx(Qe, {
@@ -35897,7 +35910,7 @@ function tL() {
   const [e, t] = E.useState([]), [r, n] = E.useState([]), [s, o] = E.useState(!0), l = async () => {
     o(!0);
     const [d, h] = await Promise.all([Ol(), za()]);
-    t(d.filter(p => p.role === "mo" || p.role === "ms")), n(h), o(!1)
+    t(d.filter(p => (p.role === "mo" || p.role === "ms") && p.role !== "inactive")), n(h), o(!1)
   };
   E.useEffect(() => {
     l()
@@ -52299,7 +52312,7 @@ function Eh({
     Ce = s.filter(D => D.type === "MS").length,
     we = Q_(n) && !e,
     q = Z_(n) && !e,
-    M = d.filter(D => D.role === "mo" || D.role === "ms"),
+    M = d.filter(D => (D.role === "mo" || D.role === "ms") && D.role !== "inactive"),
     // Filter dropdowns: only show markets/staff the user is allowed to see
     // AND that actually appear in the current report set.
     // Supervisors/managers see only their assigned markets/staff; everyone
@@ -53884,11 +53897,9 @@ function ZU() {
       stats: k,
       loading: p,
       columns: 5
-    }), m.jsxs("div", {
-      className: "grid grid-cols-1 lg:grid-cols-2 gap-4",
-      children: [m.jsxs(Je, {
-        className: "p-5",
-        children: [m.jsxs("h3", {
+    }), m.jsxs(Je, {
+      className: "p-5",
+      children: [m.jsxs("h3", {
           className: "text-sm font-bold text-gray-800 mb-4 flex items-center gap-2",
           children: [m.jsx(og, {
             className: "text-emerald-500",
@@ -53905,75 +53916,30 @@ function ZU() {
           className: "text-sm text-gray-400 text-center py-6",
           children: "No MO markets assigned to you"
         }) : m.jsx("div", {
-          className: "space-y-2",
+          className: "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2",
           children: b.map(T => {
             const N = _.has(T.id),
               F = d.find(U => U.market_id === T.id);
             return m.jsxs("div", {
-              className: `flex items-center gap-3 px-4 py-3 rounded-lg border-2 transition-all
+              className: `flex items-center gap-2.5 px-3 py-2.5 rounded-lg border-2 transition-all
                       ${N?"bg-emerald-50 border-emerald-200":"bg-red-50 border-red-100"}`,
               children: [m.jsx("div", {
-                className: `w-2.5 h-2.5 rounded-full shrink-0 ${N?"bg-green-500":"bg-red-400"}`
+                className: `w-7 h-7 rounded-lg flex items-center justify-center text-white shrink-0
+                      ${N?"bg-emerald-500":"bg-red-400"}`,
+                children: N ? m.jsx(ys, { size: 14 }) : m.jsx(El, { size: 14 })
               }), m.jsxs("div", {
-                className: "flex-1 min-w-0",
+                className: "min-w-0 flex-1",
                 children: [m.jsx("p", {
-                  className: "text-sm font-semibold text-gray-700",
+                  className: "font-bold text-gray-700 text-xs leading-tight",
                   children: T.name
-                }), m.jsx("p", {
-                  className: "text-[11px] text-gray-400",
-                  children: T.city
+                }), m.jsxs("p", {
+                  className: "text-[10px] text-gray-400 leading-tight",
+                  children: [T.city, N && F?.submitted_at ? ` · ${F.submitted_at}` : ""]
                 })]
-              }), N ? m.jsxs("span", {
-                className: "text-[10px] font-bold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full flex items-center gap-1",
-                children: [m.jsx(ys, {
-                  size: 10
-                }), " ", F?.submitted_at]
-              }) : m.jsxs("span", {
-                className: "text-[10px] font-bold text-red-500 bg-red-100 px-2 py-0.5 rounded-full flex items-center gap-1",
-                children: [m.jsx(El, {
-                  size: 10
-                }), " Not sent"]
               })]
             }, T.id)
           })
         })]
-      }), m.jsxs(Je, {
-        className: "p-5",
-        children: [m.jsxs("h3", {
-          className: "text-sm font-bold text-gray-800 mb-4 flex items-center gap-2",
-          children: [m.jsx(f2, {
-            className: "text-emerald-500",
-            size: 16
-          }), "Quick Actions"]
-        }), m.jsxs("div", {
-          className: "space-y-2",
-          children: [m.jsxs(ht, {
-            variant: "outline",
-            className: "w-full justify-start h-11 text-sm",
-            onClick: () => t("/mo-supervisor/reports"),
-            children: [m.jsx(ao, {
-              size: 16,
-              className: "mr-2 text-emerald-500"
-            }), "View MO Report Database"]
-          }), m.jsxs(ht, {
-            variant: "outline",
-            className: "w-full justify-start h-11 text-sm",
-            onClick: () => t("/mo-supervisor/ranking"),
-            children: [m.jsx(Pa, {
-              size: 16,
-              className: "mr-2 text-amber-500"
-            }), "View MO Rankings"]
-          })]
-        }), m.jsx("div", {
-          className: "mt-4 p-3 bg-blue-50 border border-blue-100 rounded-lg",
-          children: m.jsxs("p", {
-            className: "text-xs text-blue-700 font-medium",
-            children: [m.jsx("strong", {
-              children: "Note:"
-            }), " As an MO Supervisor, you can only see MO reports from your assigned markets. MS reports are not visible to you."]
-          })
-        })]
-      })]
     }), m.jsx(BT, {
       date: r,
       staffList: l,
@@ -54919,11 +54885,9 @@ function rz() {
       stats: k,
       loading: p,
       columns: 5
-    }), m.jsxs("div", {
-      className: "grid grid-cols-1 lg:grid-cols-2 gap-4",
-      children: [m.jsxs(Je, {
-        className: "p-5",
-        children: [m.jsxs("h3", {
+    }), m.jsxs(Je, {
+      className: "p-5",
+      children: [m.jsxs("h3", {
           className: "text-sm font-bold text-gray-800 mb-4 flex items-center gap-2",
           children: [m.jsx(og, {
             className: "text-emerald-500",
@@ -54940,75 +54904,30 @@ function rz() {
           className: "text-sm text-gray-400 text-center py-6",
           children: "No MS markets assigned to you"
         }) : m.jsx("div", {
-          className: "space-y-2",
+          className: "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2",
           children: b.map(T => {
             const N = _.has(T.id),
               F = d.find(U => U.market_id === T.id);
             return m.jsxs("div", {
-              className: `flex items-center gap-3 px-4 py-3 rounded-lg border-2 transition-all
+              className: `flex items-center gap-2.5 px-3 py-2.5 rounded-lg border-2 transition-all
                       ${N?"bg-emerald-50 border-emerald-200":"bg-red-50 border-red-100"}`,
               children: [m.jsx("div", {
-                className: `w-2.5 h-2.5 rounded-full shrink-0 ${N?"bg-green-500":"bg-red-400"}`
+                className: `w-7 h-7 rounded-lg flex items-center justify-center text-white shrink-0
+                      ${N?"bg-emerald-500":"bg-red-400"}`,
+                children: N ? m.jsx(ys, { size: 14 }) : m.jsx(El, { size: 14 })
               }), m.jsxs("div", {
-                className: "flex-1 min-w-0",
+                className: "min-w-0 flex-1",
                 children: [m.jsx("p", {
-                  className: "text-sm font-semibold text-gray-700",
+                  className: "font-bold text-gray-700 text-xs leading-tight",
                   children: T.name
-                }), m.jsx("p", {
-                  className: "text-[11px] text-gray-400",
-                  children: T.city
+                }), m.jsxs("p", {
+                  className: "text-[10px] text-gray-400 leading-tight",
+                  children: [T.city, N && F?.submitted_at ? ` · ${F.submitted_at}` : ""]
                 })]
-              }), N ? m.jsxs("span", {
-                className: "text-[10px] font-bold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full flex items-center gap-1",
-                children: [m.jsx(ys, {
-                  size: 10
-                }), " ", F?.submitted_at]
-              }) : m.jsxs("span", {
-                className: "text-[10px] font-bold text-red-500 bg-red-100 px-2 py-0.5 rounded-full flex items-center gap-1",
-                children: [m.jsx(El, {
-                  size: 10
-                }), " Not sent"]
               })]
             }, T.id)
           })
         })]
-      }), m.jsxs(Je, {
-        className: "p-5",
-        children: [m.jsxs("h3", {
-          className: "text-sm font-bold text-gray-800 mb-4 flex items-center gap-2",
-          children: [m.jsx(f2, {
-            className: "text-emerald-500",
-            size: 16
-          }), "Quick Actions"]
-        }), m.jsxs("div", {
-          className: "space-y-2",
-          children: [m.jsxs(ht, {
-            variant: "outline",
-            className: "w-full justify-start h-11 text-sm",
-            onClick: () => t("/ms-supervisor/reports"),
-            children: [m.jsx(ao, {
-              size: 16,
-              className: "mr-2 text-emerald-500"
-            }), "View MS Report Database"]
-          }), m.jsxs(ht, {
-            variant: "outline",
-            className: "w-full justify-start h-11 text-sm",
-            onClick: () => t("/ms-supervisor/ranking"),
-            children: [m.jsx(Pa, {
-              size: 16,
-              className: "mr-2 text-amber-500"
-            }), "View MS Rankings"]
-          })]
-        }), m.jsx("div", {
-          className: "mt-4 p-3 bg-blue-50 border border-blue-100 rounded-lg",
-          children: m.jsxs("p", {
-            className: "text-xs text-blue-700 font-medium",
-            children: [m.jsx("strong", {
-              children: "Note:"
-            }), " As an MS Supervisor, you can only see MS reports from your assigned markets. MO reports are not visible to you."]
-          })
-        })]
-      })]
     }), m.jsx(BT, {
       date: r,
       staffList: l,
@@ -55245,7 +55164,7 @@ function sz() {
       try {
         const [k, T] = await Promise.all([za(), Ol()]);
         s(k);
-        const N = T.filter(R => R.role === "ms");
+        const N = T.filter(R => R.role === "ms" && R.role !== "inactive");
         l(N);
         const U = await Pl({
           canViewMO: !1,
@@ -55500,7 +55419,7 @@ function oz() {
   const p = E.useCallback(async () => {
     h(!0);
     try {
-      const _ = (await Ol()).filter(U => U.role === "ms"),
+      const _ = (await Ol()).filter(U => U.role === "ms" && U.role !== "inactive"),
         S = await rL({
           canViewMO: !1,
           canViewMS: !0,
