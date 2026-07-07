@@ -25813,6 +25813,7 @@ const DO = "https://lbjlbjgvjhuquluvdxau.supabase.co",
     ms_supervisor: "MS Supervisor",
     mo: "Market Officer",
     ms: "Merchant Support",
+    po: "POS Officer",
     inactive: "Inactive"
   },
   Cp = {
@@ -25845,6 +25846,11 @@ const DO = "https://lbjlbjgvjhuquluvdxau.supabase.co",
       bg: "bg-rose-50",
       text: "text-rose-800",
       border: "border-rose-200"
+    },
+    po: {
+      bg: "bg-cyan-50",
+      text: "text-cyan-800",
+      border: "border-cyan-200"
     },
     inactive: {
       bg: "bg-gray-100",
@@ -25944,6 +25950,8 @@ function t2(e) {
       return "/mo/report";
     case "ms":
       return "/ms/report";
+    case "po":
+      return "/po/report";
     default:
       return "/"
   }
@@ -27194,7 +27202,8 @@ const _j = [
     FileText: qi,
     BarChart3: Ad,
     Eye: u2,
-    Calendar: Ml
+    Calendar: Ml,
+    RefreshCw: ij
   },
   Ej = [{
     label: "Dashboard",
@@ -27262,6 +27271,16 @@ const _j = [
     path: "/mo-supervisor/ranking",
     roles: ["mo_supervisor"]
   }, {
+    label: "Request Table",
+    icon: "RefreshCw",
+    path: "/mo-supervisor/requests",
+    roles: ["mo_supervisor"]
+  }, {
+    label: "PO Reports",
+    icon: "FileText",
+    path: "/mo-supervisor/po-reports",
+    roles: ["mo_supervisor"]
+  }, {
     label: "Dashboard",
     icon: "LayoutDashboard",
     path: "/ms-supervisor",
@@ -27307,6 +27326,11 @@ const _j = [
     path: "/mo/history",
     roles: ["mo"]
   }, {
+    label: "Change of Status",
+    icon: "RefreshCw",
+    path: "/mo/change-status",
+    roles: ["mo"]
+  }, {
     label: "My Report",
     icon: "FileText",
     path: "/ms/report",
@@ -27316,6 +27340,21 @@ const _j = [
     icon: "Calendar",
     path: "/ms/history",
     roles: ["ms"]
+  }, {
+    label: "PO Report",
+    icon: "FileText",
+    path: "/po/report",
+    roles: ["po"]
+  }, {
+    label: "My Reports",
+    icon: "Calendar",
+    path: "/po/history",
+    roles: ["po"]
+  }, {
+    label: "Change of Status",
+    icon: "RefreshCw",
+    path: "/po/change-status",
+    roles: ["po"]
   }];
 
 function Tj({
@@ -33967,7 +34006,7 @@ function pD({
         }), " Create Account"]
       }), m.jsx("p", {
         className: "text-xs text-gray-400 mt-1",
-        children: "For MO and MS field staff only. Contact admin for supervisor access."
+        children: "For MO, MS, and PO field staff only. Contact admin for supervisor access."
       })]
     }), m.jsxs("form", {
       onSubmit: R,
@@ -33977,14 +34016,14 @@ function pD({
           className: "text-xs font-semibold text-gray-500 uppercase tracking-wider",
           children: "I am a"
         }), m.jsx("div", {
-          className: "grid grid-cols-2 gap-2 mt-1.5",
-          children: ["ms", "mo"].map(L => m.jsx("button", {
+          className: "grid grid-cols-3 gap-2 mt-1.5",
+          children: ["ms", "mo", "po"].map(L => m.jsx("button", {
             type: "button",
             onClick: () => {
               o(L), h("")
             },
-            className: `py-2.5 rounded-xl border-2 text-sm font-bold transition-all ${s===L?L==="ms"?"border-pink-400 bg-pink-50 text-pink-700":"border-emerald-400 bg-emerald-50 text-emerald-700":"border-gray-100 text-gray-400 hover:border-gray-200"}`,
-            children: L === "ms" ? "🏪 MS Staff" : "🧑‍💼 MO Staff"
+            className: `py-2.5 rounded-xl border-2 text-sm font-bold transition-all ${s===L?L==="ms"?"border-pink-400 bg-pink-50 text-pink-700":L==="po"?"border-cyan-400 bg-cyan-50 text-cyan-700":"border-emerald-400 bg-emerald-50 text-emerald-700":"border-gray-100 text-gray-400 hover:border-gray-200"}`,
+            children: L === "ms" ? "🏪 MS Staff" : L === "po" ? "📟 PO Staff" : "🧑‍💼 MO Staff"
           }, L))
         })]
       }), m.jsxs("div", {
@@ -34001,11 +34040,11 @@ function pD({
       }), m.jsxs("div", {
         children: [m.jsx(Qe, {
           className: "text-xs font-semibold text-gray-500 uppercase tracking-wider",
-          children: s === "ms" ? "MS Code (becomes your username)" : "Username"
+          children: s === "ms" ? "MS Code (becomes your username)" : s === "po" ? "PO Code (becomes your username)" : "Username"
         }), m.jsx(yt, {
           value: l,
           onChange: L => u(L.target.value),
-          placeholder: s === "ms" ? "e.g. MS10237" : "e.g. john_mo",
+          placeholder: s === "ms" ? "e.g. MS10237" : s === "po" ? "e.g. PO10237" : "e.g. john_mo",
           className: "mt-1.5",
           required: !0
         })]
@@ -34853,7 +34892,7 @@ function qD() {
             className: "flex items-center gap-3",
             children: [m.jsx("span", {
               className: `text-[10px] font-bold uppercase px-2 py-0.5 rounded-full
-                    ${T.team==="MO"?"bg-emerald-100 text-emerald-700":"bg-pink-100 text-pink-700"}`,
+                    ${T.team==="MO"?"bg-emerald-100 text-emerald-700":T.team==="PO"?"bg-cyan-100 text-cyan-700":"bg-pink-100 text-pink-700"}`,
               children: T.team
             }), m.jsx("button", {
               onClick: () => S(T),
@@ -34919,6 +34958,9 @@ function qD() {
                 }), m.jsx(ft, {
                   value: "MS",
                   children: "MS — Merchant Support"
+                }), m.jsx(ft, {
+                  value: "PO",
+                  children: "PO — POS Officer"
                 })]
               })]
             })]
@@ -34940,7 +34982,7 @@ function qD() {
     })]
   })
 }
-const YD = ["admin", "manager", "mo_supervisor", "ms_supervisor", "mo", "ms", "inactive"];
+const YD = ["admin", "manager", "mo_supervisor", "ms_supervisor", "mo", "ms", "po", "inactive"];
 
 function KD() {
   const [e, t] = E.useState([]), [r, n] = E.useState([]), [s, o] = E.useState(!0), [l, u] = E.useState(!1), [d, h] = E.useState(null), [p, g] = E.useState(""), [y, b] = E.useState(""), [_, w] = E.useState("mo"), [S, C] = E.useState(""), [k, T] = E.useState(""), [N, F] = E.useState(""), U = async () => {
@@ -34994,7 +35036,7 @@ function KD() {
 UPDATE users SET role = 'ms_supervisor' WHERE role = 'supervisor';
 UPDATE users SET role = 'mo' WHERE role NOT IN ('admin','manager','mo_supervisor','ms_supervisor','mo','ms','inactive');
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
-ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin','manager','mo_supervisor','ms_supervisor','mo','ms','inactive'));`) : ee(pe)
+ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin','manager','mo_supervisor','ms_supervisor','mo','ms','po','inactive'));`) : ee(pe)
         }
       }
     }, he = async fe => {
@@ -35157,13 +35199,16 @@ ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin','manag
                   value: "ms",
                   children: "Merchant Support (MS)"
                 }), m.jsx(ft, {
+                  value: "po",
+                  children: "POS Officer (PO)"
+                }), m.jsx(ft, {
                   value: "inactive",
                   children: "Inactive (disable account)"
                 })]
               })]
             }), m.jsxs("p", {
               className: "text-[10px] text-gray-400 mt-1",
-              children: [_ === "mo_supervisor" && "Can only see MO reports from assigned markets", _ === "ms_supervisor" && "Can only see MS reports from assigned markets", _ === "admin" && "Full system access", _ === "manager" && "Can view all MS data across all markets", _ === "inactive" && "Account is disabled — user cannot log in and will not appear on supervisor pages"]
+              children: [_ === "mo_supervisor" && "Can only see MO reports from assigned markets", _ === "ms_supervisor" && "Can only see MS reports from assigned markets", _ === "admin" && "Full system access", _ === "manager" && "Can view all MS data across all markets", _ === "po" && "POS Officer — submits PO reports, managed by MO Supervisor", _ === "inactive" && "Account is disabled — user cannot log in and will not appear on supervisor pages"]
             })]
           }), m.jsxs("div", {
             children: [m.jsx(Qe, {
@@ -35175,7 +35220,7 @@ ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin','manag
               placeholder: "username",
               disabled: !!d
             })]
-          }), (_ === "mo" || _ === "ms") && m.jsxs("div", {
+          }), (_ === "mo" || _ === "ms" || _ === "po") && m.jsxs("div", {
             children: [m.jsxs(Qe, {
               className: "text-xs",
               children: ["Employee Code ", _ === "ms" && "(= login username)"]
@@ -35214,7 +35259,7 @@ ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin','manag
                 children: [m.jsx(ft, {
                   value: "none",
                   children: "No market assigned"
-                }), r.filter(fe => _ === "mo" ? fe.team === "MO" : _ === "ms" ? fe.team === "MS" : !0).map(fe => m.jsxs(ft, {
+                }), r.filter(fe => _ === "mo" ? fe.team === "MO" : _ === "ms" ? fe.team === "MS" : _ === "po" ? fe.team === "PO" : !0).map(fe => m.jsxs(ft, {
                   value: fe.id,
                   children: [fe.name, " (", fe.city, ")"]
                 }, fe.id))]
@@ -35620,6 +35665,14 @@ function pfmComponent() {
     { key: "merchantIds", label: "Merchant IDs", desc: "Merchant ID list" },
     { key: "challenge", label: "Challenges", desc: "Challenges textarea" }
   ];
+  const poFields = [
+    { key: "brand_new_stock", label: "Brand New Stock", desc: "POS section (Smart/TPOS/MPOS/Total)" },
+    { key: "repaired_stock", label: "Repaired Stock", desc: "POS section (Smart/TPOS/MPOS/Total)" },
+    { key: "rr_stock", label: "R&R Stock", desc: "POS section (Smart/TPOS/MPOS/Total)" },
+    { key: "total_faulty", label: "Total Faulty", desc: "POS section (Smart/TPOS/MPOS/Total)" },
+    { key: "tn_stickers", label: "TN Stickers", desc: "TN stickers count" },
+    { key: "three_fold_flyers", label: "3 Fold Flyers", desc: "3-fold flyers count" }
+  ];
 
   const renderField = (team, f) => {
     const checked = cfg[team][f.key] !== !1;
@@ -35702,6 +35755,18 @@ function pfmComponent() {
         className: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2",
         children: msFields.map(f => renderField("MS", f))
       })]
+    }), m.jsxs(Je, {
+      className: "p-5",
+      children: [m.jsxs("h3", {
+        className: "text-sm font-bold text-cyan-700 mb-3 flex items-center gap-2",
+        children: [m.jsx(qi, {
+          className: "text-cyan-500",
+          size: 16
+        }), "PO Report Fields"]
+      }), m.jsx("div", {
+        className: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2",
+        children: poFields.map(f => renderField("PO", f))
+      })]
     }), m.jsxs("div", {
       className: "fixed bottom-0 left-0 right-0 bg-white border-t-2 border-indigo-300 p-4 flex items-center justify-between gap-2 shadow-[0_-4px_12px_rgba(0,0,0,0.1)] z-50",
       children: [m.jsx("p", {
@@ -35748,7 +35813,7 @@ function ptmComponent() {
     },
     reset = async () => {
       if (confirm("Reset all columns to visible?")) {
-        const def = { MS: {}, MO: {} };
+        const def = { MS: {}, MO: {}, PO: {} };
         setCfg(def);
         await setPreviewTaskConfig(def);
         setSaved(!0);
@@ -36058,6 +36123,137 @@ async function deleteReport(e) {
   if (t) throw new Error(`Failed to delete report: ${t.message}`);
   return !0
 }
+
+// ============================================================================
+// Change of Status Requests
+// ============================================================================
+
+// Create a new change-of-status request (MO only).
+// submitted_by is the logged-in MO user id.
+async function createChangeOfStatus(submittedBy, sn, reason) {
+  const { data, error } = await It.from("change_of_status_requests")
+    .insert({
+      sn: sn.trim(),
+      reason: reason.trim(),
+      submitted_by: submittedBy,
+      status: "Pending"
+    })
+    .select()
+    .single();
+  if (error) throw new Error(`Failed to create request: ${error.message}`);
+  return data;
+}
+
+// Fetch all change-of-status requests submitted by a specific MO user.
+async function fetchMyChangeOfStatus(userId) {
+  const { data, error } = await It.from("change_of_status_requests")
+    .select("*, user:submitted_by(id, name, code)")
+    .eq("submitted_by", userId)
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(`Failed to fetch your requests: ${error.message}`);
+  return data || [];
+}
+
+// Fetch ALL change-of-status requests (supervisor view).
+async function fetchAllChangeOfStatus() {
+  const { data, error } = await It.from("change_of_status_requests")
+    .select("*, user:submitted_by(id, name, code)")
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(`Failed to fetch requests: ${error.message}`);
+  return data || [];
+}
+
+// Update the status of a change-of-status request (supervisor only).
+// Also bumps updated_at to now().
+async function updateChangeOfStatusStatus(id, newStatus) {
+  const { data, error } = await It.from("change_of_status_requests")
+    .update({ status: newStatus, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw new Error(`Failed to update request: ${error.message}`);
+  return data;
+}
+
+// ============================================================================
+// PO Reports
+// ============================================================================
+
+// Create a new PO report. data is the full JSON of form fields.
+async function createPOReport(userId, marketId, date, submittedAt, data) {
+  const { data: row, error } = await It.from("po_reports")
+    .insert({
+      user_id: userId,
+      market_id: marketId || null,
+      date: date,
+      submitted_at: submittedAt,
+      data: data
+    })
+    .select("*, user:user_id(id, name, code), market:market_id(id, name, city)")
+    .single();
+  if (error) throw new Error(`Failed to submit PO report: ${error.message}`);
+  return row;
+}
+
+// Check if a PO report already exists for a given market + date.
+// Returns the existing report (with submitter info) or null.
+// Used to prevent double-submission when multiple POs share a market.
+async function fetchPOReportByMarket(marketId, date) {
+  if (!marketId) return null;
+  const { data, error } = await It.from("po_reports")
+    .select("*, user:user_id(id, name, code), market:market_id(id, name, city)")
+    .eq("market_id", marketId)
+    .eq("date", date)
+    .order("submitted_at", { ascending: false })
+    .limit(1);
+  if (error) throw new Error(`Failed to check existing PO report: ${error.message}`);
+  return (data && data.length > 0) ? data[0] : null;
+}
+
+// Update an existing PO report (used when PO edits their own submission).
+async function updatePOReport(id, submittedAt, data) {
+  const { data: row, error } = await It.from("po_reports")
+    .update({ submitted_at: submittedAt, data: data })
+    .eq("id", id)
+    .select("*, user:user_id(id, name, code), market:market_id(id, name, city)")
+    .single();
+  if (error) throw new Error(`Failed to update PO report: ${error.message}`);
+  return row;
+}
+
+// Fetch all PO reports submitted by a specific PO user.
+async function fetchMyPOReports(userId) {
+  const { data, error } = await It.from("po_reports")
+    .select("*, user:user_id(id, name, code)")
+    .eq("user_id", userId)
+    .order("date", { ascending: false })
+    .order("submitted_at", { ascending: false });
+  if (error) throw new Error(`Failed to fetch your PO reports: ${error.message}`);
+  return data || [];
+}
+
+// Fetch ALL PO reports (supervisor view).
+async function fetchAllPOReports() {
+  const { data, error } = await It.from("po_reports")
+    .select("*, user:user_id(id, name, code), market:market_id(id, name, city)")
+    .order("date", { ascending: false })
+    .order("submitted_at", { ascending: false });
+  if (error) throw new Error(`Failed to fetch PO reports: ${error.message}`);
+  return data || [];
+}
+
+// Fetch all PO users (to know which markets have PO officers assigned).
+async function fetchPOUsers() {
+  const { data, error } = await It.from("users")
+    .select("id, name, code, market_id")
+    .eq("role", "po")
+    .neq("role", "inactive")
+    .order("name");
+  if (error) throw new Error(`Failed to fetch PO users: ${error.message}`);
+  return data || [];
+}
+
+
 
 function vu(e) {
   return e && {
@@ -36452,6 +36648,14 @@ const PREVIEW_FIELDS_DEFAULT = {
     swapMerchantIds: !0,
     merchantIds: !0,
     challenge: !0
+  },
+  PO: {
+    brand_new_stock: !0,
+    repaired_stock: !0,
+    rr_stock: !0,
+    total_faulty: !0,
+    tn_stickers: !0,
+    three_fold_flyers: !0
   }
 };
 
@@ -36470,7 +36674,8 @@ function getPreviewFieldConfig() {
     const parsed = JSON.parse(raw);
     return {
       MO: { ...PREVIEW_FIELDS_DEFAULT.MO, ...(parsed.MO || {}) },
-      MS: { ...PREVIEW_FIELDS_DEFAULT.MS, ...(parsed.MS || {}) }
+      MS: { ...PREVIEW_FIELDS_DEFAULT.MS, ...(parsed.MS || {}) },
+      PO: { ...PREVIEW_FIELDS_DEFAULT.PO, ...(parsed.PO || {}) }
     }
   } catch (e) {
     return { ...PREVIEW_FIELDS_DEFAULT }
@@ -36485,7 +36690,8 @@ async function syncPreviewFieldConfig() {
     if (!error && data && data.value) {
       _previewFieldCache = {
         MO: { ...PREVIEW_FIELDS_DEFAULT.MO, ...(data.value.MO || {}) },
-        MS: { ...PREVIEW_FIELDS_DEFAULT.MS, ...(data.value.MS || {}) }
+        MS: { ...PREVIEW_FIELDS_DEFAULT.MS, ...(data.value.MS || {}) },
+        PO: { ...PREVIEW_FIELDS_DEFAULT.PO, ...(data.value.PO || {}) }
       };
       // Also update localStorage as backup
       localStorage.setItem(PREVIEW_FIELDS_KEY, JSON.stringify(_previewFieldCache));
@@ -36553,11 +36759,11 @@ function getPreviewTaskConfig() {
   // Fall back to localStorage
   try {
     const raw = localStorage.getItem(PREVIEW_TASKS_KEY);
-    if (!raw) return { MS: {}, MO: {} };
+    if (!raw) return { MS: {}, MO: {}, PO: {} };
     const parsed = JSON.parse(raw);
-    return { MS: parsed.MS || {}, MO: parsed.MO || {} }
+    return { MS: parsed.MS || {}, MO: parsed.MO || {}, PO: parsed.PO || {} }
   } catch (e) {
-    return { MS: {}, MO: {} }
+    return { MS: {}, MO: {}, PO: {} }
   }
 }
 
@@ -36566,7 +36772,7 @@ async function syncPreviewTaskConfig() {
   try {
     const { data, error } = await It.from("app_settings").select("value").eq("key", "preview_tasks").single();
     if (!error && data && data.value) {
-      _previewTaskCache = { MS: data.value.MS || {}, MO: data.value.MO || {} };
+      _previewTaskCache = { MS: data.value.MS || {}, MO: data.value.MO || {}, PO: data.value.PO || {} };
       localStorage.setItem(PREVIEW_TASKS_KEY, JSON.stringify(_previewTaskCache));
       return;
     }
@@ -57177,6 +57383,1205 @@ function il({
   })
 }
 
+
+
+// ============================================================================
+// Change of Status — MO page (form + read-only "My Request" table)
+// ============================================================================
+function ChangeOfStatusPage() {
+  const { user: e } = Qn();
+  const [sn, setSn] = E.useState("");
+  const [reason, setReason] = E.useState("");
+  const [requests, setRequests] = E.useState([]);
+  const [loading, setLoading] = E.useState(!0);
+  const [submitting, setSubmitting] = E.useState(!1);
+  const [error, setError] = E.useState("");
+
+  const load = async () => {
+    if (!e) return;
+    setLoading(!0);
+    try {
+      setRequests(await fetchMyChangeOfStatus(e.id));
+    } catch (err) {
+      console.error("Failed to load requests:", err);
+    } finally {
+      setLoading(!1);
+    }
+  };
+
+  E.useEffect(() => { load() }, [e]);
+
+  const submit = async (ev) => {
+    ev.preventDefault();
+    setError("");
+    if (!sn.trim() || !reason.trim()) {
+      setError("Both SN and Reason are required.");
+      return;
+    }
+    setSubmitting(!0);
+    try {
+      await createChangeOfStatus(e.id, sn, reason);
+      ui.success("Request submitted successfully");
+      setSn("");
+      setReason("");
+      await load();
+    } catch (err) {
+      setError(err.message || "Failed to submit request");
+    } finally {
+      setSubmitting(!1);
+    }
+  };
+
+  const statusBadge = (s) => {
+    const styles = {
+      Pending: "bg-amber-100 text-amber-700 border-amber-200",
+      Applied: "bg-blue-100 text-blue-700 border-blue-200",
+      Done: "bg-emerald-100 text-emerald-700 border-emerald-200"
+    };
+    return styles[s] || "bg-gray-100 text-gray-600 border-gray-200";
+  };
+
+  return m.jsxs("div", {
+    className: "space-y-5",
+    children: [m.jsxs("div", {
+      children: [m.jsxs("h1", {
+        className: "text-xl font-extrabold text-gray-800 flex items-center gap-2",
+        children: [m.jsx(qi, { className: "text-emerald-600", size: 22 }), "Change of Status"]
+      }), m.jsx("p", {
+        className: "text-xs text-gray-400 mt-1",
+        children: "Submit a request to change the status of a serial number"
+      })]
+    }),
+
+    // ===== Submission form =====
+    m.jsxs(Je, {
+      className: "p-5",
+      children: [m.jsxs("h3", {
+        className: "text-sm font-bold text-gray-800 mb-4 flex items-center gap-2",
+        children: [m.jsx(cg, { className: "text-emerald-500", size: 16 }), "New Request"]
+      }), m.jsxs("form", {
+        onSubmit: submit,
+        className: "space-y-4",
+        children: [m.jsxs("div", {
+          className: "grid grid-cols-1 md:grid-cols-2 gap-4",
+          children: [m.jsxs("div", {
+            children: [m.jsx(Qe, {
+              className: "text-xs font-semibold text-gray-500 uppercase tracking-wider",
+              children: "Serial Number (SN)"
+            }), m.jsx(yt, {
+              value: sn,
+              onChange: t => setSn(t.target.value),
+              placeholder: "e.g. SN-001234",
+              className: "mt-1"
+            })]
+          }), m.jsxs("div", {
+            children: [m.jsx(Qe, {
+              className: "text-xs font-semibold text-gray-500 uppercase tracking-wider",
+              children: "Reason"
+            }), m.jsx(yt, {
+              value: reason,
+              onChange: t => setReason(t.target.value),
+              placeholder: "e.g. Terminal swapped, Device faulty...",
+              className: "mt-1"
+            })]
+          })]
+        }), error && m.jsx("div", {
+          className: "bg-red-50 border border-red-200 rounded-lg p-3",
+          children: m.jsx("p", { className: "text-xs text-red-600 font-medium", children: error })
+        }), m.jsxs(ht, {
+          type: "submit",
+          disabled: submitting,
+          className: "bg-emerald-600 hover:bg-emerald-700 text-white",
+          children: [m.jsx(ug, { size: 14, className: "mr-1" }), submitting ? "Submitting..." : "Submit Request"]
+        })]
+      })]
+    }),
+
+    // ===== My Request table =====
+    m.jsxs(Je, {
+      className: "p-5",
+      children: [m.jsxs("h3", {
+        className: "text-sm font-bold text-gray-800 mb-4 flex items-center gap-2",
+        children: [m.jsx(ao, { className: "text-emerald-500", size: 16 }), "My Requests"]
+      }), loading ? m.jsx("div", {
+        className: "space-y-2",
+        children: Array.from({ length: 3 }).map((_, i) => m.jsx(Zn, { className: "h-12" }, i))
+      }) : requests.length === 0 ? m.jsx("p", {
+        className: "text-sm text-gray-400 text-center py-8",
+        children: "You have not submitted any requests yet"
+      }) : m.jsx("div", {
+        className: "overflow-x-auto",
+        children: m.jsxs("table", {
+          className: "w-full text-sm",
+          children: [m.jsx("thead", {
+            children: m.jsxs("tr", {
+              className: "border-b border-gray-200 text-left",
+              children: [m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "SN" }), m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Reason" }), m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Status" }), m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Date Submitted" })]
+            })
+          }), m.jsx("tbody", {
+            children: requests.map(r => m.jsxs("tr", {
+              className: "border-b border-gray-100 hover:bg-gray-50",
+              children: [m.jsx("td", { className: "py-2.5 px-3 font-mono text-xs text-gray-700", children: r.sn }), m.jsx("td", { className: "py-2.5 px-3 text-gray-700", children: r.reason }), m.jsx("td", { className: "py-2.5 px-3", children: m.jsx("span", { className: `text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${statusBadge(r.status)}`, children: r.status }) }), m.jsx("td", { className: "py-2.5 px-3 text-[11px] text-gray-400", children: new Date(r.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) })]
+            }, r.id))
+          })]
+        })
+      })]
+    })]
+  });
+}
+
+// ============================================================================
+// Change of Status — Supervisor Request Table (all MOs, status update)
+// ============================================================================
+function SupervisorRequestTable() {
+  const { user: e } = Qn();
+  const [requests, setRequests] = E.useState([]);
+  const [loading, setLoading] = E.useState(!0);
+  const [updating, setUpdating] = E.useState({});
+  const [filterStatus, setFilterStatus] = E.useState("all");
+  const [copying, setCopying] = E.useState(!1);
+
+  const load = async () => {
+    setLoading(!0);
+    try {
+      setRequests(await fetchAllChangeOfStatus());
+    } catch (err) {
+      console.error("Failed to load requests:", err);
+    } finally {
+      setLoading(!1);
+    }
+  };
+
+  E.useEffect(() => { load() }, []);
+
+  const handleStatusChange = async (id, newStatus) => {
+    setUpdating(prev => ({ ...prev, [id]: !0 }));
+    try {
+      await updateChangeOfStatusStatus(id, newStatus);
+      ui.success("Status updated");
+      setRequests(prev => prev.map(r => r.id === id ? { ...r, status: newStatus } : r));
+    } catch (err) {
+      ui.error(err.message || "Failed to update status");
+    } finally {
+      setUpdating(prev => ({ ...prev, [id]: !1 }));
+    }
+  };
+
+  const statusBadge = (s) => {
+    const styles = {
+      Pending: "bg-amber-100 text-amber-700 border-amber-200",
+      Applied: "bg-blue-100 text-blue-700 border-blue-200",
+      Done: "bg-emerald-100 text-emerald-700 border-emerald-200"
+    };
+    return styles[s] || "bg-gray-100 text-gray-600 border-gray-200";
+  };
+
+  // Apply status filter
+  const filtered = filterStatus === "all" ? requests : requests.filter(r => r.status === filterStatus);
+
+  // Copy all filtered SN + Reason to clipboard
+  const copyFiltered = async () => {
+    if (!filtered.length) {
+      ui.error("No requests to copy");
+      return;
+    }
+    setCopying(!0);
+    try {
+      const text = filtered.map(r => `${r.sn} - ${r.reason}`).join("\n");
+      const ok = await copyReportToClipboard(text);
+      ok ? ui.success(`Copied ${filtered.length} SN(s) with reasons to clipboard`) : ui.info("Copy failed — please copy manually");
+    } catch (err) {
+      ui.error("Failed to copy");
+    } finally {
+      setCopying(!1);
+    }
+  };
+
+  const summary = {
+    Pending: requests.filter(r => r.status === "Pending").length,
+    Applied: requests.filter(r => r.status === "Applied").length,
+    Done: requests.filter(r => r.status === "Done").length
+  };
+
+  return m.jsxs("div", {
+    className: "space-y-5",
+    children: [m.jsxs("div", {
+      children: [m.jsxs("h1", {
+        className: "text-xl font-extrabold text-gray-800 flex items-center gap-2",
+        children: [m.jsx(ao, { className: "text-emerald-600", size: 22 }), "Request Table"]
+      }), m.jsx("p", {
+        className: "text-xs text-gray-400 mt-1",
+        children: "All change-of-status requests submitted by MOs and POs"
+      })]
+    }),
+
+    // Summary cards
+    m.jsxs("div", {
+      className: "grid grid-cols-3 gap-3",
+      children: [m.jsxs(Je, {
+        className: "p-3 text-center border-l-4 border-amber-400",
+        children: [m.jsx("div", { className: "text-lg font-extrabold text-amber-600", children: summary.Pending }), m.jsx("div", { className: "text-[10px] font-semibold text-gray-400 uppercase", children: "Pending" })]
+      }), m.jsxs(Je, {
+        className: "p-3 text-center border-l-4 border-blue-400",
+        children: [m.jsx("div", { className: "text-lg font-extrabold text-blue-600", children: summary.Applied }), m.jsx("div", { className: "text-[10px] font-semibold text-gray-400 uppercase", children: "Applied" })]
+      }), m.jsxs(Je, {
+        className: "p-3 text-center border-l-4 border-emerald-400",
+        children: [m.jsx("div", { className: "text-lg font-extrabold text-emerald-600", children: summary.Done }), m.jsx("div", { className: "text-[10px] font-semibold text-gray-400 uppercase", children: "Done" })]
+      })]
+    }),
+
+    // Filters bar: status filter + copy button
+    m.jsxs(Je, {
+      className: "p-4",
+      children: [m.jsxs("div", {
+        className: "flex flex-wrap items-end gap-3 justify-between",
+        children: [m.jsxs("div", {
+          className: "flex flex-col gap-1",
+          children: [m.jsx(Qe, { className: "text-[10px] font-bold text-gray-400 uppercase", children: "Filter by Status" }), m.jsxs(qn, {
+            value: filterStatus,
+            onValueChange: v => setFilterStatus(v),
+            children: [m.jsx(Kn, { children: m.jsx(Yn, { placeholder: "All Statuses" }) }), m.jsxs(Xn, {
+              children: [m.jsx(ft, { value: "all", children: "All Statuses" }), m.jsx(ft, { value: "Pending", children: "Pending" }), m.jsx(ft, { value: "Applied", children: "Applied" }), m.jsx(ft, { value: "Done", children: "Done" })]
+            })]
+          })]
+        }), m.jsxs("div", {
+          className: "flex items-center gap-2",
+          children: [m.jsxs("span", {
+            className: "text-[10px] text-gray-400 font-bold uppercase",
+            children: [filtered.length, " of ", requests.length, " requests"]
+          }), filtered.length > 0 && m.jsxs(ht, {
+            size: "sm",
+            variant: "outline",
+            onClick: copyFiltered,
+            disabled: copying,
+            className: "text-xs border-blue-200 text-blue-600 hover:bg-blue-50",
+            children: [m.jsx(cp2, { size: 12, className: "mr-1" }), copying ? "Copying..." : "Copy SN + Reason"]
+          })]
+        })]
+      })]
+    }),
+
+    // Request table
+    m.jsxs(Je, {
+      className: "p-5",
+      children: [m.jsxs("h3", {
+        className: "text-sm font-bold text-gray-800 mb-4 flex items-center gap-2",
+        children: [m.jsx(ao, { className: "text-emerald-500", size: 16 }), "All Requests"]
+      }), loading ? m.jsx("div", {
+        className: "space-y-2",
+        children: Array.from({ length: 5 }).map((_, i) => m.jsx(Zn, { className: "h-12" }, i))
+      }) : filtered.length === 0 ? m.jsx("p", {
+        className: "text-sm text-gray-400 text-center py-8",
+        children: requests.length === 0 ? "No requests submitted yet" : "No requests match the selected status"
+      }) : m.jsx("div", {
+        className: "overflow-x-auto",
+        children: m.jsxs("table", {
+          className: "w-full text-sm",
+          children: [m.jsx("thead", {
+            children: m.jsxs("tr", {
+              className: "border-b border-gray-200 text-left",
+              children: [m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "SN" }), m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Reason" }), m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "MO Name" }), m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Status" }), m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Date Submitted" }), m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Update Status" })]
+            })
+          }), m.jsx("tbody", {
+            children: filtered.map(r => m.jsxs("tr", {
+              className: "border-b border-gray-100 hover:bg-gray-50",
+              children: [m.jsx("td", { className: "py-2.5 px-3 font-mono text-xs text-gray-700", children: r.sn }), m.jsx("td", { className: "py-2.5 px-3 text-gray-700", children: r.reason }), m.jsx("td", { className: "py-2.5 px-3 text-gray-700", children: r.user?.name || "Unknown" }), m.jsx("td", { className: "py-2.5 px-3", children: m.jsx("span", { className: `text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${statusBadge(r.status)}`, children: r.status }) }), m.jsx("td", { className: "py-2.5 px-3 text-[11px] text-gray-400", children: new Date(r.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) }), m.jsx("td", { className: "py-2.5 px-3", children: m.jsxs("div", { className: "flex items-center gap-1", children: [["Pending", "Applied", "Done"].map(s => m.jsx("button", {
+                onClick: () => r.status !== s && handleStatusChange(r.id, s),
+                disabled: r.status === s || updating[r.id],
+                className: `text-[10px] font-bold uppercase px-2 py-1 rounded border transition-colors
+                  ${r.status === s
+                    ? (s === "Pending" ? "bg-amber-100 text-amber-700 border-amber-300" : s === "Applied" ? "bg-blue-100 text-blue-700 border-blue-300" : "bg-emerald-100 text-emerald-700 border-emerald-300")
+                    : "bg-white text-gray-400 border-gray-200 hover:bg-gray-50"
+                  }
+                  ${updating[r.id] ? "opacity-50 cursor-wait" : ""}`,
+                children: s
+              }, s))] }) })]
+            }, r.id))
+          })]
+        })
+      })]
+    })]
+  });
+}
+
+
+
+// ============================================================================
+// PO Report — Submission Form
+// ============================================================================
+// PO form fields (mirrors MO POS-section structure):
+//   Brand New Stock       (smart/tpos/mpos/total)
+//   Repaired Stock        (smart/tpos/mpos/total)
+//   R&R Stock             (smart/tpos/mpos/total)
+//   Total Faulty          (smart/tpos/mpos/total)
+//   TN stickers           (number)
+//   3 fold flyers         (number)
+// ============================================================================
+const PO_FORM_FIELDS = [
+  { key: "brand_new_stock", label: "Brand New Stock" },
+  { key: "repaired_stock", label: "Repaired Stock" },
+  { key: "rr_stock", label: "R&R Stock" },
+  { key: "total_faulty", label: "Total Faulty" }
+];
+
+function POReportPage() {
+  const { user: e } = Qn();
+  const [formData, setFormData] = E.useState({});
+  const [submitting, setSubmitting] = E.useState(!1);
+  const [error, setError] = E.useState("");
+  const [existingReport, setExistingReport] = E.useState(null);
+  const [editMode, setEditMode] = E.useState(!1);
+  const [checking, setChecking] = E.useState(!0);
+  const today = new Date().toISOString().split("T")[0];
+  const todayDisplay = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+
+  // Check if a report already exists for this PO's market today
+  const checkExisting = async () => {
+    if (!e?.market_id) { setChecking(!1); return; }
+    setChecking(!0);
+    try {
+      const existing = await fetchPOReportByMarket(e.market_id, today);
+      setExistingReport(existing);
+    } catch (err) {
+      console.error("Failed to check existing report:", err);
+    } finally {
+      setChecking(!1);
+    }
+  };
+
+  E.useEffect(() => { checkExisting() }, [e, today]);
+
+  const updatePOSField = (fieldKey, posType, value) => {
+    setFormData(prev => {
+      const existing = prev[fieldKey] || { smart: 0, tpos: 0, mpos: 0, total: 0 };
+      const updated = { ...existing, [posType]: parseInt(value) || 0 };
+      updated.total = (updated.smart || 0) + (updated.tpos || 0) + (updated.mpos || 0);
+      return { ...prev, [fieldKey]: updated };
+    });
+  };
+
+  const updateNumberField = (fieldKey, value) => {
+    setFormData(prev => ({ ...prev, [fieldKey]: parseInt(value) || 0 }));
+  };
+
+  // Enter edit mode: pre-fill the form with the existing report's data
+  const startEdit = () => {
+    if (!existingReport) return;
+    setFormData(existingReport.data || {});
+    setEditMode(!0);
+    setError("");
+  };
+
+  // Cancel edit: discard form changes and return to "submitted" view
+  const cancelEdit = () => {
+    setEditMode(!1);
+    setFormData({});
+    setError("");
+  };
+
+  const submit = async () => {
+    setError("");
+    if (!e) { setError("Not logged in."); return; }
+    if (!e.market_id) { setError("No market assigned. Contact admin."); return; }
+    setSubmitting(!0);
+    try {
+      const submitTime = new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+      const dataWithMeta = {
+        ...formData,
+        poName: e.name || "",
+        poCode: e.code || "",
+        submittedDate: today
+      };
+
+      if (editMode && existingReport) {
+        // Update existing report
+        await updatePOReport(existingReport.id, submitTime, dataWithMeta);
+        ui.success("PO report updated successfully");
+      } else {
+        // Re-check right before submitting to prevent race conditions
+        const existing = await fetchPOReportByMarket(e.market_id, today);
+        if (existing) {
+          setExistingReport(existing);
+          ui.info("A report was already submitted for your market today");
+          return;
+        }
+        await createPOReport(e.id, e.market_id, today, submitTime, dataWithMeta);
+        ui.success("PO report submitted successfully");
+      }
+      setFormData({});
+      setEditMode(!1);
+      // Refresh the existing-report check so the "submitted" view appears
+      await checkExisting();
+    } catch (err) {
+      setError(err.message || "Failed to submit report");
+    } finally {
+      setSubmitting(!1);
+    }
+  };
+
+  // ===== Already-submitted view =====
+  const renderAlreadySubmitted = () => {
+    const submitterName = existingReport?.user?.name || "another POS Officer";
+    const submitterCode = existingReport?.user?.code ? " (" + existingReport.user.code + ")" : "";
+    const submittedAt = existingReport?.submitted_at || "";
+    const isMine = existingReport?.user_id === e?.id;
+    return m.jsxs(Je, {
+      className: "p-6 bg-gradient-to-r from-emerald-50 to-green-50 border-emerald-200",
+      children: [m.jsxs("div", {
+        className: "flex items-center gap-4",
+        children: [m.jsx("div", {
+          className: "w-12 h-12 rounded-xl bg-emerald-500 flex items-center justify-center text-white",
+          children: m.jsx(ys, { size: 24 })
+        }), m.jsxs("div", {
+          className: "flex-1",
+          children: [m.jsx("p", {
+            className: "text-base font-bold text-emerald-800",
+            children: isMine ? "You already submitted today's report" : "Report Submitted for Today"
+          }), m.jsxs("p", {
+            className: "text-xs text-emerald-600 mt-0.5",
+            children: isMine
+              ? ["Submitted at ", submittedAt]
+              : ["Submitted by ", m.jsx("strong", { children: submitterName + submitterCode }), " at ", submittedAt]
+          })]
+        })]
+      }), m.jsx("div", {
+        className: "mt-4 flex flex-wrap gap-2",
+        children: [
+          // Only the original submitter can edit
+          isMine && m.jsxs(ht, {
+            onClick: startEdit,
+            className: "bg-emerald-600 hover:bg-emerald-700 text-white",
+            size: "sm",
+            children: [m.jsx(cg, { size: 14, className: "mr-1" }), "Edit Report"]
+          })
+        ]
+      }), m.jsx("div", {
+        className: "mt-4 p-3 bg-blue-50 border border-blue-100 rounded-lg",
+        children: m.jsxs("p", {
+          className: "text-xs text-blue-700 font-medium",
+          children: [m.jsx("strong", { children: "Note:" }), " Only one PO report per market per day is allowed. ", isMine ? "You submitted this report — you can edit it using the button above." : "Another POS Officer in your market already submitted today's report. If this is an error, contact your supervisor."]
+        })
+      })]
+    });
+  };
+
+  // ===== No market assigned view =====
+  const renderNoMarket = () => m.jsxs(Je, {
+    className: "p-6 bg-amber-50 border-amber-200",
+    children: [m.jsxs("div", {
+      className: "flex items-center gap-4",
+      children: [m.jsx("div", {
+        className: "w-12 h-12 rounded-xl bg-amber-500 flex items-center justify-center text-white",
+        children: m.jsx(El, { size: 24 })
+      }), m.jsxs("div", {
+        children: [m.jsx("p", {
+          className: "text-base font-bold text-amber-800",
+          children: "No Market Assigned"
+        }), m.jsx("p", {
+          className: "text-xs text-amber-600 mt-0.5",
+          children: "Contact your admin to assign you to a market before you can submit reports."
+        })]
+      })]
+    })]
+  });
+
+  // ===== Loading view =====
+  const renderLoading = () => m.jsx(Je, {
+    className: "p-6",
+    children: m.jsxs("div", {
+      className: "animate-pulse space-y-4",
+      children: [m.jsx("div", { className: "h-4 bg-gray-100 rounded w-1/3" }), m.jsx("div", { className: "h-12 bg-gray-100 rounded" })]
+    })
+  });
+
+  return m.jsxs("div", {
+    className: "space-y-4 max-w-2xl mx-auto",
+    children: [m.jsxs("div", {
+      children: [m.jsxs("h1", {
+        className: "text-xl font-extrabold text-gray-800 flex items-center gap-2",
+        children: [m.jsx(qi, { className: "text-cyan-600", size: 22 }), "PO Daily Report"]
+      }), m.jsx("p", {
+        className: "text-xs text-gray-400 mt-1",
+        children: todayDisplay
+      })]
+    }),
+
+    // State-based rendering:
+    // - Loading while checking
+    // - No market → warning
+    // - Existing report + not editing → "submitted" view (with Edit button if mine)
+    // - Otherwise (no report, OR editing) → show the form
+    checking ? renderLoading()
+    : !e?.market_id ? renderNoMarket()
+    : (existingReport && !editMode) ? renderAlreadySubmitted()
+    : m.jsxs(m.Fragment, {
+      children: [
+        // Edit mode banner
+        editMode && m.jsx("div", {
+          className: "bg-cyan-50 border border-cyan-200 rounded-lg p-3 flex items-center justify-between",
+          children: [m.jsxs("p", {
+            className: "text-xs text-cyan-700 font-medium",
+            children: [m.jsx("strong", { children: "Editing:" }), " Update your report fields below and click Save Changes."]
+          }), m.jsx(ht, {
+            variant: "outline",
+            size: "sm",
+            onClick: cancelEdit,
+            className: "h-7 text-xs",
+            children: "Cancel"
+          })]
+        }),
+
+        // Officer info card
+        m.jsx(Je, {
+          className: "p-4 bg-gradient-to-r from-cyan-50 to-blue-50 border-cyan-100",
+          children: m.jsxs("div", {
+            className: "grid grid-cols-2 gap-3",
+            children: [m.jsxs("div", {
+              children: [m.jsx(Qe, { className: "text-[10px] text-cyan-600 uppercase", children: "Officer" }), m.jsx("p", { className: "text-sm font-bold text-gray-700", children: e?.name || "N/A" })]
+            }), m.jsxs("div", {
+              children: [m.jsx(Qe, { className: "text-[10px] text-cyan-600 uppercase", children: "Code" }), m.jsx("p", { className: "text-sm font-bold text-gray-700", children: e?.code || "N/A" })]
+            })]
+          })
+        }),
+
+        // POS sections (Brand New Stock, Repaired Stock, R&R Stock, Total Faulty)
+        m.jsx("div", {
+          className: "space-y-3",
+          children: PO_FORM_FIELDS.map(field => m.jsxs(Je, {
+            className: "p-4",
+            children: [m.jsx("h3", {
+              className: "text-sm font-bold text-gray-700 mb-3",
+              children: field.label
+            }), m.jsx("div", {
+              className: "grid grid-cols-3 gap-3",
+              children: ["smart", "tpos", "mpos"].map(pt => m.jsxs("div", {
+                children: [m.jsx(Qe, {
+                  className: "text-[10px] uppercase text-gray-400",
+                  children: pt === "smart" ? "Smart" : pt === "tpos" ? "TPOS" : "MPOS"
+                }), m.jsx(yt, {
+                  type: "number",
+                  min: 0,
+                  value: formData[field.key]?.[pt] || "",
+                  onChange: ev => updatePOSField(field.key, pt, ev.target.value),
+                  className: "mt-1"
+                })]
+              }, pt))
+            }), m.jsxs("div", {
+              className: "mt-3 p-3 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-lg text-center text-white",
+              children: [m.jsxs("p", {
+                className: "text-[10px] font-bold uppercase opacity-80",
+                children: ["Total ", field.label]
+              }), m.jsx("p", {
+                className: "text-2xl font-extrabold",
+                children: formData[field.key]?.total || 0
+              })]
+            })]
+          }, field.key))
+        }),
+
+        // Number fields: TN stickers + 3 fold flyers
+        m.jsxs(Je, {
+          className: "p-4",
+          children: [m.jsx("h3", {
+            className: "text-sm font-bold text-gray-700 mb-3",
+            children: "Additional Items"
+          }), m.jsx("div", {
+            className: "grid grid-cols-2 gap-3",
+            children: [m.jsxs("div", {
+              children: [m.jsx(Qe, { className: "text-[10px] uppercase text-gray-400", children: "TN Stickers" }), m.jsx(yt, {
+                type: "number",
+                min: 0,
+                value: formData.tn_stickers || "",
+                onChange: ev => updateNumberField("tn_stickers", ev.target.value),
+                className: "mt-1"
+              })]
+            }), m.jsxs("div", {
+              children: [m.jsx(Qe, { className: "text-[10px] uppercase text-gray-400", children: "3 Fold Flyers" }), m.jsx(yt, {
+                type: "number",
+                min: 0,
+                value: formData.three_fold_flyers || "",
+                onChange: ev => updateNumberField("three_fold_flyers", ev.target.value),
+                className: "mt-1"
+              })]
+            })]
+          })]
+        }),
+
+        // Error
+        error && m.jsx("div", {
+          className: "bg-red-50 border border-red-200 rounded-lg p-3",
+          children: m.jsx("p", { className: "text-xs text-red-600 font-medium", children: error })
+        }),
+
+        // Submit / Save Changes button
+        m.jsx(ht, {
+          onClick: submit,
+          disabled: submitting,
+          size: "lg",
+          className: "w-full h-11 bg-emerald-600 hover:bg-emerald-700 text-white font-bold",
+          children: submitting ? "Saving..." : (editMode ? "Save Changes" : "Submit Report")
+        })
+      ]
+    })]
+  });
+}
+
+// ============================================================================
+// PO — My Reports (read-only history with expandable details)
+// ============================================================================
+function POMyReports() {
+  const { user: e } = Qn();
+  const [reports, setReports] = E.useState([]);
+  const [loading, setLoading] = E.useState(!0);
+  const [expanded, setExpanded] = E.useState(null);
+
+  const load = async () => {
+    if (!e) return;
+    setLoading(!0);
+    try {
+      setReports(await fetchMyPOReports(e.id));
+    } catch (err) {
+      console.error("Failed to load PO reports:", err);
+    } finally {
+      setLoading(!1);
+    }
+  };
+
+  E.useEffect(() => { load() }, [e]);
+
+  return m.jsxs("div", {
+    className: "space-y-4",
+    children: [m.jsxs("div", {
+      children: [m.jsxs("h1", {
+        className: "text-xl font-extrabold text-gray-800 flex items-center gap-2",
+        children: [m.jsx(Ml, { className: "text-cyan-600", size: 22 }), "My Reports"]
+      }), m.jsx("p", {
+        className: "text-xs text-gray-400 mt-1",
+        children: "Your previously submitted PO reports"
+      })]
+    }),
+
+    m.jsxs(Je, {
+      className: "p-5",
+      children: [m.jsxs("h3", {
+        className: "text-sm font-bold text-gray-800 mb-4 flex items-center gap-2",
+        children: [m.jsx(ao, { className: "text-cyan-500", size: 16 }), "Report History"]
+      }), loading ? m.jsx("div", {
+        className: "space-y-2",
+        children: Array.from({ length: 3 }).map((_, i) => m.jsx(Zn, { className: "h-12" }, i))
+      }) : reports.length === 0 ? m.jsx("p", {
+        className: "text-sm text-gray-400 text-center py-8",
+        children: "You have not submitted any reports yet"
+      }) : m.jsx("div", {
+        className: "space-y-2",
+        children: reports.map(r => {
+          const isExpanded = expanded === r.id;
+          const d = r.data || {};
+          return m.jsxs("div", {
+            className: `border-2 rounded-lg transition-all ${isExpanded ? "border-cyan-300 bg-cyan-50/30" : "border-gray-100 hover:border-gray-200"}`,
+            children: [m.jsxs("button", {
+              onClick: () => setExpanded(isExpanded ? null : r.id),
+              className: "w-full flex items-center gap-3 p-3 text-left",
+              children: [m.jsx("span", {
+                className: "text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full shrink-0 bg-cyan-100 text-cyan-700",
+                children: "PO"
+              }), m.jsxs("div", {
+                className: "flex-1 min-w-0",
+                children: [m.jsx("p", { className: "text-sm font-bold text-gray-800", children: r.date }), m.jsxs("p", { className: "text-[11px] text-gray-400", children: ["Submitted at ", r.submitted_at || "--"] })]
+              }), isExpanded ? m.jsx(i2, { size: 16, className: "text-gray-400" }) : m.jsx(sg, { size: 16, className: "text-gray-400" })]
+            }), isExpanded && m.jsx("div", {
+              className: "border-t px-4 py-4 bg-white",
+              children: m.jsxs("div", {
+                className: "space-y-4",
+                children: [
+                  // POS sections
+                  PO_FORM_FIELDS.map(field => {
+                    const val = d[field.key];
+                    if (!val) return null;
+                    return m.jsxs("div", {
+                      className: "bg-gray-50 rounded-xl px-4 py-3",
+                      children: [m.jsx("p", { className: "text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2", children: field.label }), m.jsxs("div", { className: "flex items-center gap-2 py-1.5 border-b border-gray-100 last:border-0", children: [m.jsx("span", { className: "text-[11px] font-semibold text-gray-500 w-12", children: "Smart" }), m.jsx("span", { className: "text-xs font-bold text-gray-700", children: val.smart || 0 })] }), m.jsxs("div", { className: "flex items-center gap-2 py-1.5 border-b border-gray-100 last:border-0", children: [m.jsx("span", { className: "text-[11px] font-semibold text-gray-500 w-12", children: "TPOS" }), m.jsx("span", { className: "text-xs font-bold text-gray-700", children: val.tpos || 0 })] }), m.jsxs("div", { className: "flex items-center gap-2 py-1.5 border-b border-gray-100 last:border-0", children: [m.jsx("span", { className: "text-[11px] font-semibold text-gray-500 w-12", children: "MPOS" }), m.jsx("span", { className: "text-xs font-bold text-gray-700", children: val.mpos || 0 })] }), m.jsxs("div", { className: "flex items-center gap-2 py-1.5", children: [m.jsx("span", { className: "text-[11px] font-bold text-gray-700 uppercase", children: "Total" }), m.jsx("span", { className: "text-sm font-extrabold text-cyan-600", children: val.total || 0 })] })]
+                    }, field.key);
+                  }),
+                  // Number fields
+                  m.jsxs("div", {
+                    className: "bg-gray-50 rounded-xl px-4 py-3",
+                    children: [m.jsx("p", { className: "text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2", children: "Additional Items" }), m.jsxs("div", { className: "flex items-center justify-between py-1.5 border-b border-gray-100", children: [m.jsx("span", { className: "text-[11px] font-semibold text-gray-500", children: "TN Stickers" }), m.jsx("span", { className: "text-xs font-bold text-gray-700", children: d.tn_stickers || 0 })] }), m.jsxs("div", { className: "flex items-center justify-between py-1.5", children: [m.jsx("span", { className: "text-[11px] font-semibold text-gray-500", children: "3 Fold Flyers" }), m.jsx("span", { className: "text-xs font-bold text-gray-700", children: d.three_fold_flyers || 0 })] })]
+                  })
+                ]
+              })
+            })]
+          }, r.id);
+        })
+      })]
+    })]
+  });
+}
+
+// ============================================================================
+// Supervisor — PO Reports panel (all POs, with filters)
+// ============================================================================
+function SupervisorPOReports() {
+  const [reports, setReports] = E.useState([]);
+  const [poUsers, setPOUsers] = E.useState([]);
+  const [markets, setMarkets] = E.useState([]);
+  const [loading, setLoading] = E.useState(!0);
+  const [expanded, setExpanded] = E.useState(null);
+  const [filterPO, setFilterPO] = E.useState("");
+  const [fromDate, setFromDate] = E.useState("");
+  const [toDate, setToDate] = E.useState("");
+  const [statusDate, setStatusDate] = E.useState(() => new Date().toISOString().split("T")[0]);
+  const [showPreview, setShowPreview] = E.useState(!1);
+
+  const load = async () => {
+    setLoading(!0);
+    try {
+      const [rpts, users, mkts] = await Promise.all([fetchAllPOReports(), fetchPOUsers(), za()]);
+      setReports(rpts);
+      setPOUsers(users);
+      setMarkets(mkts);
+    } catch (err) {
+      console.error("Failed to load PO data:", err);
+    } finally {
+      setLoading(!1);
+    }
+  };
+
+  E.useEffect(() => { load() }, []);
+
+  // Build unique PO list for filter dropdown
+  const poList = Array.from(new Map(reports.map(r => [r.user?.id, r.user]).filter(([id]) => id)).values());
+
+  // Apply filters
+  const filtered = reports.filter(r => {
+    if (filterPO && r.user?.id !== filterPO) return false;
+    if (fromDate && r.date < fromDate) return false;
+    if (toDate && r.date > toDate) return false;
+    return true;
+  });
+
+  // ===== PO City Status (for the selected statusDate) =====
+  // Get unique markets that have at least one PO officer assigned
+  const poMarketIds = Array.from(new Set(poUsers.map(u => u.market_id).filter(Boolean)));
+  const poMarkets = markets.filter(m => poMarketIds.includes(m.id));
+  // Get reports submitted on statusDate
+  const todayReports = reports.filter(r => r.date === statusDate);
+  const submittedMarketIds = new Set(todayReports.map(r => r.market_id).filter(Boolean));
+
+  // ===== Excel export =====
+  const exportExcel = () => {
+    if (!filtered.length) {
+      ui.error("No reports to export");
+      return;
+    }
+    const H = Ma.book_new();
+    H.Props = {
+      Title: "PO Reports",
+      Subject: "POS Officer Reports",
+      Author: "Daily Report System",
+      CreatedDate: new Date
+    };
+    const headers = ["Date", "Office", "City", "PO Name",
+      "Brand New Stock Smart", "Brand New Stock TPOS", "Brand New Stock MPOS", "Brand New Stock Total",
+      "Repaired Stock Smart", "Repaired Stock TPOS", "Repaired Stock MPOS", "Repaired Stock Total",
+      "R&R Stock Smart", "R&R Stock TPOS", "R&R Stock MPOS", "R&R Stock Total",
+      "Total Faulty Smart", "Total Faulty TPOS", "Total Faulty MPOS", "Total Faulty Total",
+      "TN Stickers", "3 Fold Flyers", "Submitted At"];
+    const rows = filtered.map(r => {
+      const d = r.data || {};
+      const mk = r.market || markets.find(m => m.id === r.market_id) || {};
+      const bs = d.brand_new_stock || {};
+      const rs = d.repaired_stock || {};
+      const rr = d.rr_stock || {};
+      const tf = d.total_faulty || {};
+      return [r.date, mk.name || "", mk.city || "", r.user?.name || "",
+        bs.smart || 0, bs.tpos || 0, bs.mpos || 0, bs.total || 0,
+        rs.smart || 0, rs.tpos || 0, rs.mpos || 0, rs.total || 0,
+        rr.smart || 0, rr.tpos || 0, rr.mpos || 0, rr.total || 0,
+        tf.smart || 0, tf.tpos || 0, tf.mpos || 0, tf.total || 0,
+        d.tn_stickers || 0, d.three_fold_flyers || 0, r.submitted_at || ""];
+    });
+    const ws = Ma.aoa_to_sheet([headers, ...rows]);
+    ws["!cols"] = headers.map(() => ({ wch: 16 }));
+    ws["!autofilter"] = { ref: `A1:${Ma.encode_col(headers.length - 1)}1` };
+    Ma.book_append_sheet(H, ws, "PO Reports");
+    const fname = `PO_Reports_${new Date().toISOString().split("T")[0]}.xlsx`;
+    MU(H, fname);
+    ui.success("Excel exported: " + fname);
+  };
+
+  return m.jsxs("div", {
+    className: "space-y-4",
+    children: [m.jsxs("div", {
+      className: "flex items-start justify-between flex-wrap gap-4",
+      children: [m.jsxs("div", {
+        children: [m.jsxs("h1", {
+          className: "text-xl font-extrabold text-gray-800 flex items-center gap-2",
+          children: [m.jsx(ao, { className: "text-cyan-600", size: 22 }), "PO Reports"]
+        }), m.jsx("p", {
+          className: "text-xs text-gray-400 mt-1",
+          children: "All PO reports submitted by POS Officers"
+        })]
+      }), m.jsxs("div", {
+        className: "flex items-center gap-2",
+        children: [filtered.length > 0 && m.jsxs(m.Fragment, {
+          children: [m.jsxs(ht, {
+            size: "sm",
+            variant: "outline",
+            onClick: () => setShowPreview(!0),
+            className: "text-xs border-blue-200 text-blue-600 hover:bg-blue-50",
+            children: [m.jsx(u2, { size: 12, className: "mr-1" }), "Preview Report"]
+          }), m.jsxs(ht, {
+            size: "sm",
+            onClick: exportExcel,
+            className: "bg-emerald-600 hover:bg-emerald-700 text-white text-xs",
+            children: [m.jsx(c2, { size: 12, className: "mr-1" }), "Export Excel"]
+          })]
+        })]
+      })]
+    }),
+
+    // ===== PO City Status grid =====
+    m.jsxs(Je, {
+      className: "p-5",
+      children: [m.jsxs("div", {
+        className: "flex items-center justify-between mb-4 flex-wrap gap-2",
+        children: [m.jsxs("h3", {
+          className: "text-sm font-bold text-gray-800 flex items-center gap-2",
+          children: [m.jsx(og, { className: "text-cyan-500", size: 16 }), "PO City Status"]
+        }), m.jsxs("div", {
+          className: "flex items-center gap-2",
+          children: [m.jsx(Ml, { size: 14, className: "text-gray-400" }), m.jsx(yt, {
+            type: "date", value: statusDate, onChange: ev => setStatusDate(ev.target.value), className: "w-36 h-8 text-xs"
+          }), m.jsx(ht, {
+            size: "sm", variant: "outline",
+            onClick: () => setStatusDate(new Date().toISOString().split("T")[0]),
+            className: "h-8 text-xs",
+            children: "Today"
+          })]
+        })]
+      }), loading ? m.jsx("div", {
+        className: "space-y-2",
+        children: Array.from({ length: 4 }).map((_, i) => m.jsx(Zn, { className: "h-12 rounded-lg" }, i))
+      }) : poMarkets.length === 0 ? m.jsx("p", {
+        className: "text-sm text-gray-400 text-center py-6",
+        children: "No markets have PO officers assigned"
+      }) : m.jsxs("div", {
+        children: [m.jsxs("p", {
+          className: "text-xs text-gray-400 mb-3",
+          children: [submittedMarketIds.size, " of ", poMarkets.length, " cities submitted"]
+        }), m.jsx("div", {
+          className: "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2",
+          children: poMarkets.map(mk => {
+            const submitted = submittedMarketIds.has(mk.id);
+            const rpt = todayReports.find(r => r.market_id === mk.id);
+            return m.jsxs("div", {
+              className: `flex items-center gap-2.5 px-3 py-2.5 rounded-lg border-2 transition-all
+                ${submitted ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-100"}`,
+              children: [m.jsx("div", {
+                className: `w-7 h-7 rounded-lg flex items-center justify-center text-white shrink-0
+                  ${submitted ? "bg-emerald-500" : "bg-red-400"}`,
+                children: submitted ? m.jsx(ys, { size: 14 }) : m.jsx(El, { size: 14 })
+              }), m.jsxs("div", {
+                className: "min-w-0 flex-1",
+                children: [m.jsx("p", {
+                  className: "font-bold text-gray-700 text-xs leading-tight",
+                  children: mk.name
+                }), m.jsxs("p", {
+                  className: "text-[10px] text-gray-400 leading-tight",
+                  children: [mk.city, submitted && rpt?.submitted_at ? " · " + rpt.submitted_at : "", submitted && rpt?.user?.name ? " · " + rpt.user.name : ""]
+                })]
+              })]
+            }, mk.id)
+          })
+        })]
+      })]
+    }),
+
+    // ===== Filters =====
+    m.jsxs(Je, {
+      className: "p-4",
+      children: [m.jsx("div", {
+        className: "flex flex-wrap items-end gap-3",
+        children: [m.jsxs("div", {
+          className: "flex flex-col gap-1",
+          children: [m.jsx(Qe, { className: "text-[10px] font-bold text-gray-400 uppercase", children: "PO Name" }), m.jsxs(qn, {
+            value: filterPO,
+            onValueChange: v => setFilterPO(v === "all" ? "" : v),
+            children: [m.jsx(Kn, { children: m.jsx(Yn, { placeholder: "All POs" }) }), m.jsxs(Xn, {
+              children: [m.jsx(ft, { value: "all", children: "All POs" }), poList.map(u => m.jsx(ft, { value: u.id, children: u.name + (u.code ? " (" + u.code + ")" : "") }, u.id))]
+            })]
+          })]
+        }), m.jsxs("div", {
+          className: "flex flex-col gap-1",
+          children: [m.jsx(Qe, { className: "text-[10px] font-bold text-gray-400 uppercase", children: "From" }), m.jsx(yt, { type: "date", value: fromDate, onChange: ev => setFromDate(ev.target.value), className: "w-36 h-9" })]
+        }), m.jsxs("div", {
+          className: "flex flex-col gap-1",
+          children: [m.jsx(Qe, { className: "text-[10px] font-bold text-gray-400 uppercase", children: "To" }), m.jsx(yt, { type: "date", value: toDate, onChange: ev => setToDate(ev.target.value), className: "w-36 h-9" })]
+        }), (filterPO || fromDate || toDate) && m.jsx(ht, {
+          variant: "outline",
+          size: "sm",
+          onClick: () => { setFilterPO(""); setFromDate(""); setToDate("") },
+          className: "h-9 text-xs",
+          children: "Reset"
+        })]
+      })]
+    }),
+
+    // ===== Reports list =====
+    m.jsxs(Je, {
+      className: "p-5",
+      children: [m.jsxs("h3", {
+        className: "text-sm font-bold text-gray-800 mb-4 flex items-center gap-2",
+        children: [m.jsx(ao, { className: "text-cyan-500", size: 16 }), "All PO Reports", m.jsx("span", { className: "text-[10px] text-gray-400 font-normal", children: "(" + filtered.length + " of " + reports.length + ")" })]
+      }), loading ? m.jsx("div", {
+        className: "space-y-2",
+        children: Array.from({ length: 5 }).map((_, i) => m.jsx(Zn, { className: "h-12" }, i))
+      }) : filtered.length === 0 ? m.jsx("p", {
+        className: "text-sm text-gray-400 text-center py-8",
+        children: "No PO reports found"
+      }) : m.jsx("div", {
+        className: "space-y-2",
+        children: filtered.map(r => {
+          const isExpanded = expanded === r.id;
+          const d = r.data || {};
+          const mk = r.market || markets.find(mk => mk.id === r.market_id) || {};
+          return m.jsxs("div", {
+            className: `border-2 rounded-lg transition-all ${isExpanded ? "border-cyan-300 bg-cyan-50/30" : "border-gray-100 hover:border-gray-200"}`,
+            children: [m.jsxs("button", {
+              onClick: () => setExpanded(isExpanded ? null : r.id),
+              className: "w-full flex items-center gap-3 p-3 text-left",
+              children: [m.jsx("span", {
+                className: "text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full shrink-0 bg-cyan-100 text-cyan-700",
+                children: "PO"
+              }), m.jsxs("div", {
+                className: "flex-1 min-w-0",
+                children: [m.jsxs("p", { className: "text-sm font-bold text-gray-800", children: [r.user?.name || "Unknown", mk.name ? " · " + mk.name : ""] }), m.jsxs("p", { className: "text-[11px] text-gray-400", children: [r.date, " · ", r.submitted_at || "--", r.user?.code ? " · " + r.user.code : "", mk.city ? " · " + mk.city : ""] })]
+              }), isExpanded ? m.jsx(i2, { size: 16, className: "text-gray-400" }) : m.jsx(sg, { size: 16, className: "text-gray-400" })]
+            }), isExpanded && m.jsx("div", {
+              className: "border-t px-4 py-4 bg-white",
+              children: m.jsxs("div", {
+                className: "space-y-4",
+                children: [
+                  PO_FORM_FIELDS.map(field => {
+                    const val = d[field.key];
+                    if (!val) return null;
+                    return m.jsxs("div", {
+                      className: "bg-gray-50 rounded-xl px-4 py-3",
+                      children: [m.jsx("p", { className: "text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2", children: field.label }), m.jsxs("div", { className: "flex items-center gap-2 py-1.5 border-b border-gray-100 last:border-0", children: [m.jsx("span", { className: "text-[11px] font-semibold text-gray-500 w-12", children: "Smart" }), m.jsx("span", { className: "text-xs font-bold text-gray-700", children: val.smart || 0 })] }), m.jsxs("div", { className: "flex items-center gap-2 py-1.5 border-b border-gray-100 last:border-0", children: [m.jsx("span", { className: "text-[11px] font-semibold text-gray-500 w-12", children: "TPOS" }), m.jsx("span", { className: "text-xs font-bold text-gray-700", children: val.tpos || 0 })] }), m.jsxs("div", { className: "flex items-center gap-2 py-1.5 border-b border-gray-100 last:border-0", children: [m.jsx("span", { className: "text-[11px] font-semibold text-gray-500 w-12", children: "MPOS" }), m.jsx("span", { className: "text-xs font-bold text-gray-700", children: val.mpos || 0 })] }), m.jsxs("div", { className: "flex items-center gap-2 py-1.5", children: [m.jsx("span", { className: "text-[11px] font-bold text-gray-700 uppercase", children: "Total" }), m.jsx("span", { className: "text-sm font-extrabold text-cyan-600", children: val.total || 0 })] })]
+                    }, field.key);
+                  }),
+                  m.jsxs("div", {
+                    className: "bg-gray-50 rounded-xl px-4 py-3",
+                    children: [m.jsx("p", { className: "text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2", children: "Additional Items" }), m.jsxs("div", { className: "flex items-center justify-between py-1.5 border-b border-gray-100", children: [m.jsx("span", { className: "text-[11px] font-semibold text-gray-500", children: "TN Stickers" }), m.jsx("span", { className: "text-xs font-bold text-gray-700", children: d.tn_stickers || 0 })] }), m.jsxs("div", { className: "flex items-center justify-between py-1.5", children: [m.jsx("span", { className: "text-[11px] font-semibold text-gray-500", children: "3 Fold Flyers" }), m.jsx("span", { className: "text-xs font-bold text-gray-700", children: d.three_fold_flyers || 0 })] })]
+                  })
+                ]
+              })
+            })]
+          }, r.id);
+        })
+      })]
+    }),
+
+    // ===== Preview modal =====
+    showPreview && m.jsx(POPreviewModal, {
+      reports: filtered,
+      markets: markets,
+      onClose: () => setShowPreview(!1),
+      onExcel: exportExcel
+    })
+    ]
+  });
+}
+
+// ============================================================================
+// PO Preview Modal — full-screen table view of PO reports (like XU for MO/MS)
+// ============================================================================
+function POPreviewModal({ reports, markets, onClose, onExcel }) {
+  const dates = [...new Set(reports.map(r => r.date))].sort();
+  const poNames = Array.from(new Map(reports.map(r => [r.user?.id, r.user]).filter(([id]) => id)).values());
+
+  // POS section columns (same as MO preview style: 4 sub-columns each)
+  const poPosCols = [
+    { key: "brand_new_stock", label: "Brand New Stock", bg: "#E2D9F3", fg: "#4A235A" },
+    { key: "repaired_stock", label: "Repaired Stock", bg: "#D1ECF1", fg: "#0C5460" },
+    { key: "rr_stock", label: "R&R Stock", bg: "#FFE5D0", fg: "#7A3200" },
+    { key: "total_faulty", label: "Total Faulty", bg: "#F8D7DA", fg: "#721C24" }
+  ];
+
+  return m.jsx("div", {
+    className: "fixed inset-0 z-50 bg-black/50 flex items-stretch justify-center overflow-hidden",
+    children: m.jsxs("div", {
+      className: "bg-white shadow-2xl w-full h-full flex flex-col",
+      children: [
+        // Header bar (matches MO preview top bar)
+        m.jsxs("div", {
+          className: "flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-emerald-600 to-emerald-700",
+          children: [m.jsxs("div", {
+            children: [m.jsx("h2", {
+              className: "text-base font-bold text-white",
+              children: "PO Report Preview"
+            }), m.jsxs("p", {
+              className: "text-xs text-emerald-100 mt-0.5",
+              children: [reports.length, " reports · ", dates[0] || "—", " → ", dates[dates.length - 1] || "—", " · ", poNames.length, " POS Officers"]
+            })]
+          }), m.jsxs("div", {
+            className: "flex gap-2",
+            children: [m.jsxs("button", {
+              onClick: onExcel,
+              className: "flex items-center gap-1.5 bg-white/20 hover:bg-white/30 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors",
+              children: [m.jsx(c2, { size: 13 }), " Export Excel"]
+            }), m.jsxs("button", {
+              onClick: onClose,
+              className: "flex items-center gap-1 bg-white/10 hover:bg-white/20 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors",
+              children: [m.jsx(p2, { size: 13 }), " Close"]
+            })]
+          })]
+        }),
+
+        // Body — spreadsheet-style table (matches MO preview)
+        m.jsx("div", {
+          className: "flex-1 overflow-auto p-6",
+          children: reports.length === 0 ? m.jsx("p", {
+            className: "text-sm text-gray-400 text-center py-12",
+            children: "No reports to preview"
+          }) : m.jsxs("table", {
+            className: "text-[11px] border-collapse w-full",
+            style: { minWidth: 900 },
+            children: [
+              m.jsxs("thead", {
+                className: "sticky top-0 z-10",
+                children: [
+                  // Title row — green banner
+                  m.jsx("tr", {
+                    children: m.jsx("td", {
+                      colSpan: 4 + poPosCols.length * 4 + 3,
+                      className: "text-center font-bold text-sm py-2 px-3 text-black",
+                      style: { background: "#92D050", border: "1px solid #000" },
+                      children: "PO NORTHWEST DAILY REPORT"
+                    })
+                  }),
+                  // Main header row — yellow background
+                  m.jsxs("tr", {
+                    style: { background: "#FFFF00" },
+                    children: [
+                      m.jsx("th", {
+                        rowSpan: 2,
+                        className: "border border-black px-2 py-1 text-center font-bold whitespace-nowrap",
+                        style: { position: "sticky", left: 0, background: "#FFFF00", zIndex: 11 },
+                        children: "Date"
+                      }),
+                      m.jsx("th", {
+                        rowSpan: 2,
+                        className: "border border-black px-2 py-1 text-center font-bold whitespace-nowrap",
+                        style: { position: "sticky", left: "70px", background: "#FFFF00", zIndex: 11, width: 130, minWidth: 130, maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis" },
+                        children: "Office"
+                      }),
+                      m.jsx("th", {
+                        rowSpan: 2,
+                        className: "border border-black px-2 py-1 text-center font-bold whitespace-nowrap",
+                        style: { position: "sticky", left: "200px", background: "#FFFF00", zIndex: 11, width: 80, minWidth: 80, maxWidth: 80, overflow: "hidden", textOverflow: "ellipsis" },
+                        children: "City"
+                      }),
+                      m.jsx("th", {
+                        rowSpan: 2,
+                        className: "border border-black px-2 py-1 text-center font-bold whitespace-nowrap",
+                        style: { position: "sticky", left: "280px", background: "#FFFF00", zIndex: 11, width: 120, minWidth: 120, maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis" },
+                        children: "PO Name"
+                      }),
+                      // POS section group headers (colSpan=4 each)
+                      poPosCols.map(col => m.jsx("th", {
+                        colSpan: 4,
+                        className: "border border-black px-2 py-1 text-center font-bold",
+                        style: { background: col.bg, color: col.fg },
+                        children: col.label
+                      }, col.key)),
+                      m.jsx("th", {
+                        rowSpan: 2,
+                        className: "border border-black px-2 py-1 text-center font-bold whitespace-nowrap",
+                        children: "TN Stickers"
+                      }),
+                      m.jsx("th", {
+                        rowSpan: 2,
+                        className: "border border-black px-2 py-1 text-center font-bold whitespace-nowrap",
+                        children: "3-Fold Flyers"
+                      }),
+                      m.jsx("th", {
+                        rowSpan: 2,
+                        className: "border border-black px-2 py-1 text-center font-bold whitespace-nowrap",
+                        children: "Submitted At"
+                      })
+                    ]
+                  }),
+                  // Sub-header row: Smart / TPOS / MPOS / Total for each POS section
+                  m.jsx("tr", {
+                    children: poPosCols.map(col => m.jsxs(m.Fragment, {
+                      children: ["Smart", "TPOS", "MPOS", "Total"].map(pt => m.jsx("th", {
+                        className: "border border-black px-1 py-1 text-center font-bold",
+                        style: { background: col.bg, color: col.fg },
+                        children: pt
+                      }, `${col.key}-${pt}`))
+                    }, col.key))
+                  })
+                ]
+              }),
+              // Body rows — alternating white / light gray
+              m.jsx("tbody", {
+                children: reports.map((r, idx) => {
+                  const d = r.data || {};
+                  const mk = r.market || markets.find(mk => mk.id === r.market_id) || {};
+                  const getPos = (key) => d[key] || { smart: 0, tpos: 0, mpos: 0, total: 0 };
+                  const rowBg = idx % 2 === 0 ? "#fff" : "#f9fafb";
+                  return m.jsxs("tr", {
+                    style: { background: rowBg },
+                    children: [
+                      m.jsx("td", {
+                        className: "border border-gray-300 px-2 py-1 text-center whitespace-nowrap",
+                        style: { position: "sticky", left: 0, background: rowBg, zIndex: 5 },
+                        children: r.date
+                      }),
+                      m.jsx("td", {
+                        className: "border border-gray-300 px-2 py-1 font-bold",
+                        style: { position: "sticky", left: "70px", background: rowBg, zIndex: 5, width: 130, minWidth: 130, maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis" },
+                        children: mk.name || ""
+                      }),
+                      m.jsx("td", {
+                        className: "border border-gray-300 px-2 py-1 text-center",
+                        style: { position: "sticky", left: "200px", background: rowBg, zIndex: 5, width: 80, minWidth: 80, maxWidth: 80, overflow: "hidden", textOverflow: "ellipsis" },
+                        children: mk.city || ""
+                      }),
+                      m.jsx("td", {
+                        className: "border border-gray-300 px-2 py-1 font-bold",
+                        style: { position: "sticky", left: "280px", background: rowBg, zIndex: 5, width: 120, minWidth: 120, maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis" },
+                        children: r.user?.name || "Unknown"
+                      }),
+                      // POS section cells: Smart / TPOS / MPOS / Total
+                      poPosCols.map(col => {
+                        const v = getPos(col.key);
+                        return m.jsxs(m.Fragment, {
+                          children: [
+                            m.jsx("td", { className: "border border-gray-300 px-1 py-1 text-center", children: v.smart || 0 }, `${col.key}-s`),
+                            m.jsx("td", { className: "border border-gray-300 px-1 py-1 text-center", children: v.tpos || 0 }, `${col.key}-t`),
+                            m.jsx("td", { className: "border border-gray-300 px-1 py-1 text-center", children: v.mpos || 0 }, `${col.key}-m`),
+                            m.jsx("td", { className: "border border-gray-300 px-1 py-1 text-center font-bold", children: v.total || 0 }, `${col.key}-total`)
+                          ]
+                        }, col.key);
+                      }),
+                      m.jsx("td", { className: "border border-gray-300 px-2 py-1 text-center font-bold", children: d.tn_stickers || 0 }),
+                      m.jsx("td", { className: "border border-gray-300 px-2 py-1 text-center font-bold", children: d.three_fold_flyers || 0 }),
+                      m.jsx("td", { className: "border border-gray-300 px-2 py-1 text-center text-gray-500 whitespace-nowrap", children: r.submitted_at || "—" })
+                    ]
+                  }, r.id);
+                })
+              })
+            ]
+          })
+        })
+      ]
+    })
+  });
+}
+
 function Vz() {
   const {
     user: e,
@@ -57249,6 +58654,12 @@ function Vz() {
               }), m.jsx(Lt, {
                 path: "ranking",
                 element: m.jsx(tz, {})
+              }), m.jsx(Lt, {
+                path: "requests",
+                element: m.jsx(SupervisorRequestTable, {})
+              }), m.jsx(Lt, {
+                path: "po-reports",
+                element: m.jsx(SupervisorPOReports, {})
               })]
             })
           })
@@ -57302,6 +58713,12 @@ function Vz() {
             children: m.jsx(MyReportHistory, { teamType: "MO" })
           })
         }), m.jsx(Lt, {
+          path: "/mo/change-status",
+          element: m.jsx(il, {
+            role: "mo",
+            children: m.jsx(ChangeOfStatusPage, {})
+          })
+        }), m.jsx(Lt, {
           path: "/ms/report",
           element: m.jsx(il, {
             role: "ms",
@@ -57312,6 +58729,24 @@ function Vz() {
           element: m.jsx(il, {
             role: "ms",
             children: m.jsx(MyReportHistory, { teamType: "MS" })
+          })
+        }), m.jsx(Lt, {
+          path: "/po/report",
+          element: m.jsx(il, {
+            role: "po",
+            children: m.jsx(POReportPage, {})
+          })
+        }), m.jsx(Lt, {
+          path: "/po/history",
+          element: m.jsx(il, {
+            role: "po",
+            children: m.jsx(POMyReports, {})
+          })
+        }), m.jsx(Lt, {
+          path: "/po/change-status",
+          element: m.jsx(il, {
+            role: "po",
+            children: m.jsx(ChangeOfStatusPage, {})
           })
         }), m.jsx(Lt, {
           path: "*",
