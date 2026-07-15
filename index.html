@@ -26169,29 +26169,44 @@ function YO({
     user: null,
     accessScope: Qo(null),
     assignedMarkets: [],
+    supervisorAccess: null,
     isLoading: !0,
     isAuthenticated: !1
   }), n = E.useCallback(async u => {
     if (!u) return {
       scope: Qo(null),
-      markets: []
+      markets: [],
+      supervisorAccess: null
     };
     if (u.role === "mo_supervisor" || u.role === "ms_supervisor") try {
       const h = await jl(u.id),
         p = h.staff;
+      const sa = await fetchSupervisorAccess(u.id);
       return {
         scope: Qo(u, h.markets, p),
-        markets: h.markets
+        markets: h.markets,
+        supervisorAccess: sa
       }
     } catch {
       return {
         scope: Qo(u, [], []),
-        markets: []
+        markets: [],
+        supervisorAccess: null
+      }
+    }
+    // For MO/PO/MS staff: fetch their supervisor's access control (cascade)
+    if (u.role === "mo" || u.role === "ms" || u.role === "po") {
+      const sa = await fetchSupervisorAccessByStaff(u.id);
+      return {
+        scope: Qo(u),
+        markets: [],
+        supervisorAccess: sa
       }
     }
     return {
       scope: Qo(u),
-      markets: []
+      markets: [],
+      supervisorAccess: null
     }
   }, []);
   E.useEffect(() => {
@@ -26203,12 +26218,14 @@ function YO({
       const d = JSON.parse(u);
       n(d).then(({
         scope: h,
-        markets: p
+        markets: p,
+        supervisorAccess: sa
       }) => {
         r({
           user: d,
           accessScope: h,
           assignedMarkets: p,
+          supervisorAccess: sa,
           isLoading: !1,
           isAuthenticated: !0
         })
@@ -26228,12 +26245,14 @@ function YO({
       if (!h) return !1;
       const {
         scope: p,
-        markets: g
+        markets: g,
+        supervisorAccess: sa
       } = await n(h);
       return sessionStorage.setItem(Wf.USER, JSON.stringify(h)), r({
         user: h,
         accessScope: p,
         assignedMarkets: g,
+        supervisorAccess: sa,
         isLoading: !1,
         isAuthenticated: !0
       }), !0
@@ -26243,6 +26262,7 @@ function YO({
         user: null,
         accessScope: Qo(null),
         assignedMarkets: [],
+        supervisorAccess: null,
         isLoading: !1,
         isAuthenticated: !1
       })
@@ -26251,12 +26271,14 @@ function YO({
       if (!t.user) return;
       const {
         scope: u,
-        markets: d
+        markets: d,
+        supervisorAccess: sa
       } = await n(t.user);
       r(h => ({
         ...h,
         accessScope: u,
-        assignedMarkets: d
+        assignedMarkets: d,
+        supervisorAccess: sa
       }))
     }, [t.user, n]);
   return m.jsx(a2.Provider, {
@@ -27241,6 +27263,11 @@ const _j = [
     path: "/admin/supervisors",
     roles: ["admin"]
   }, {
+    label: "Access Control",
+    icon: "Shield",
+    path: "/admin/access-control",
+    roles: ["admin"]
+  }, {
     label: "Preview Fields",
     icon: "Eye",
     path: "/admin/preview-fields",
@@ -27279,6 +27306,16 @@ const _j = [
     label: "PO Reports",
     icon: "FileText",
     path: "/mo-supervisor/po-reports",
+    roles: ["mo_supervisor"]
+  }, {
+    label: "Markets",
+    icon: "Store",
+    path: "/mo-supervisor/markets",
+    roles: ["mo_supervisor"]
+  }, {
+    label: "Accounts",
+    icon: "Users",
+    path: "/mo-supervisor/accounts",
     roles: ["mo_supervisor"]
   }, {
     label: "Dashboard",
@@ -27374,7 +27411,31 @@ function Tj({
       border: "border-gray-200"
     },
     g = pl[h],
-    y = Ej.filter(w => w.roles.includes(h)),
+    y = Ej.filter(w => {
+      if (!w.roles.includes(h)) return false;
+      if ((h === "mo_supervisor" || h === "ms_supervisor") && t.supervisorAccess) {
+        const acc = t.supervisorAccess;
+        const pathAccessMap = {
+          "/mo-supervisor": "dashboard",
+          "/mo-supervisor/reports": "reports",
+          "/mo-supervisor/calendar": "calendar",
+          "/mo-supervisor/ranking": "ranking",
+          "/mo-supervisor/requests": "requests",
+          "/mo-supervisor/po-reports": "po_reports",
+          "/mo-supervisor/markets": "markets",
+          "/mo-supervisor/accounts": "accounts",
+          "/ms-supervisor": "dashboard",
+          "/ms-supervisor/reports": "reports",
+          "/ms-supervisor/calendar": "calendar",
+          "/ms-supervisor/ranking": "ranking",
+          "/ms-supervisor/markets": "markets",
+          "/ms-supervisor/accounts": "accounts"
+        };
+        const accessKey = pathAccessMap[w.path];
+        if (accessKey && acc[accessKey] === false) return false;
+      }
+      return true;
+    }),
     b = w => n.pathname === w,
     _ = w => {
       s(w), d(!1)
@@ -27409,7 +27470,7 @@ function Tj({
               children: "Report Tracker"
             }), m.jsx("p", {
               className: "text-[10px] text-gray-400 -mt-0.5",
-              children: "Northwest Region"
+              children: "All Regions"
             })]
           })]
         })
@@ -33860,7 +33921,7 @@ function mD({
         children: "Daily Report System"
       }), m.jsx("p", {
         className: "text-xs text-gray-400 mt-1",
-        children: "Northwest Region — Field Operations"
+        children: "Field Operations"
       })]
     }), m.jsx("div", {
       className: "bg-emerald-50 border border-emerald-100 rounded-lg p-3 mb-5",
@@ -33947,13 +34008,13 @@ function pD({
   onBack: e,
   onSuccess: t
 }) {
-  const [r, n] = E.useState(""), [s, o] = E.useState("ms"), [l, u] = E.useState(""), [d, h] = E.useState(""), [p, g] = E.useState(""), [y, b] = E.useState(""), [_, w] = E.useState([]), [S, C] = E.useState(!1), [k, T] = E.useState(!1), [N, F] = E.useState("");
+  const [r, n] = E.useState(""), [s, o] = E.useState("ms"), [l, u] = E.useState(""), [d, h] = E.useState(""), [p, g] = E.useState(""), [y, b] = E.useState(""), [_, w] = E.useState([]), [S, C] = E.useState(!1), [k, T] = E.useState(!1), [N, F] = E.useState(""), [regRegion, setRegRegion] = E.useState("");
   E.useState(() => {
     za().then(L => {
       w(L), C(!0)
     })
   });
-  const U = _.filter(L => L.team === s.toUpperCase()),
+  const U = _.filter(L => L.team === s.toUpperCase() && (!regRegion || L.region === regRegion)),
     R = async L => {
       if (L.preventDefault(), F(""), !l.trim()) {
         F("Employee code is required");
@@ -34020,7 +34081,7 @@ function pD({
           children: ["ms", "mo", "po"].map(L => m.jsx("button", {
             type: "button",
             onClick: () => {
-              o(L), h("")
+              o(L), h(""), setRegRegion("")
             },
             className: `py-2.5 rounded-xl border-2 text-sm font-bold transition-all ${s===L?L==="ms"?"border-pink-400 bg-pink-50 text-pink-700":L==="po"?"border-cyan-400 bg-cyan-50 text-cyan-700":"border-emerald-400 bg-emerald-50 text-emerald-700":"border-gray-100 text-gray-400 hover:border-gray-200"}`,
             children: L === "ms" ? "🏪 MS Staff" : L === "po" ? "📟 PO Staff" : "🧑‍💼 MO Staff"
@@ -34047,6 +34108,20 @@ function pD({
           placeholder: s === "ms" ? "e.g. MS10237" : s === "po" ? "e.g. PO10237" : "e.g. john_mo",
           className: "mt-1.5",
           required: !0
+        })]
+      }), (s === "mo" || s === "po") && m.jsxs("div", {
+        children: [m.jsx(Qe, {
+          className: "text-xs font-semibold text-gray-500 uppercase tracking-wider",
+          children: "Region"
+        }), m.jsxs(qn, {
+          value: regRegion || "none",
+          onValueChange: L => { setRegRegion(L === "none" ? "" : L); h(""); },
+          children: [m.jsx(Kn, {
+            className: "mt-1.5",
+            children: m.jsx(Yn, { placeholder: "All Regions" })
+          }), m.jsxs(Xn, {
+            children: [m.jsx(ft, { value: "none", children: "— All Regions —" }), ["NORTHCENTRAL", "NORTHEAST", "NORTHWEST", "LAGOS", "SOUTHSOUTH", "SOUTHEAST", "SOUTHWEST"].map(reg => m.jsx(ft, { value: reg, children: reg }, reg))]
+          })]
         })]
       }), m.jsxs("div", {
         children: [m.jsxs(Qe, {
@@ -34202,6 +34277,72 @@ function vD() {
   const {
     user: e
   } = Qn(), t = no();
+  const [users, setUsers] = E.useState([]);
+  const [markets, setMarkets] = E.useState([]);
+  const [reportsToday, setReportsToday] = E.useState([]);
+  const [loading, setLoading] = E.useState(!0);
+
+  E.useEffect(() => {
+    (async () => {
+      try {
+        const [u, mkts] = await Promise.all([Ol(), za()]);
+        setUsers(u);
+        setMarkets(mkts);
+        // Fetch today's reports (all types)
+        const today = new Date().toISOString().split("T")[0];
+        const scope = {
+          canViewMO: !0, canViewMS: !0,
+          canViewAllMarkets: !0, canViewAllStaff: !0,
+          allowedMarketIds: [], allowedUserIds: [],
+          canManage: !0, canSubmitReports: !1
+        };
+        const rpts = await Pl(scope, today);
+        setReportsToday(rpts);
+      } catch (err) {
+        console.error("Failed to load admin dashboard data:", err);
+      } finally {
+        setLoading(!1);
+      }
+    })();
+  }, []);
+
+  const REGIONS = ["NORTHCENTRAL", "NORTHEAST", "NORTHWEST", "LAGOS", "SOUTHSOUTH", "SOUTHEAST", "SOUTHWEST"];
+
+  // Build a map of market_id → region for quick lookup
+  const marketRegionMap = E.useMemo(() => {
+    const m = new Map();
+    markets.forEach(mk => m.set(mk.id, mk.region || ""));
+    return m;
+  }, [markets]);
+
+  // Active (non-inactive) users
+  const activeUsers = users.filter(u => u.role !== "inactive");
+
+  // Count active users per region (via their assigned market's region)
+  const usersByRegion = E.useMemo(() => {
+    const counts = {};
+    REGIONS.forEach(r => counts[r] = 0);
+    activeUsers.forEach(u => {
+      const reg = marketRegionMap.get(u.market_id) || "";
+      if (reg && counts[reg] !== undefined) counts[reg]++;
+    });
+    return counts;
+  }, [activeUsers, marketRegionMap]);
+
+  // Count markets per region
+  const marketsByRegion = E.useMemo(() => {
+    const counts = {};
+    REGIONS.forEach(r => counts[r] = 0);
+    markets.forEach(mk => {
+      const reg = mk.region || "";
+      if (reg && counts[reg] !== undefined) counts[reg]++;
+    });
+    return counts;
+  }, [markets]);
+
+  // Active regions = regions with at least 1 market
+  const activeRegionsCount = REGIONS.filter(r => (marketsByRegion[r] || 0) > 0).length;
+
   return m.jsxs("div", {
     className: "space-y-5",
     children: [m.jsxs("div", {
@@ -34213,59 +34354,151 @@ function vD() {
         }), "Admin Dashboard"]
       }), m.jsx("p", {
         className: "text-xs text-gray-400 mt-1",
-        children: "Full system administration — manage all aspects of the report tracking system"
+        children: "Get a quick overview across all 7 regions"
       })]
-    }), m.jsx(Je, {
-      className: "p-5 bg-gradient-to-r from-emerald-50 to-teal-50 border-emerald-200",
-      children: m.jsxs("div", {
-        className: "flex items-center gap-3",
-        children: [m.jsx("div", {
-          className: "w-10 h-10 rounded-lg bg-emerald-500 flex items-center justify-center text-white",
-          children: m.jsx(t3, {
-            size: 20
-          })
-        }), m.jsxs("div", {
-          children: [m.jsx("p", {
-            className: "text-sm font-bold text-gray-800",
-            children: "System Status: Active"
-          }), m.jsxs("p", {
-            className: "text-xs text-gray-500",
-            children: ["Logged in as ", m.jsx("strong", {
-              children: e?.name
-            }), " · Admin access granted"]
+    }),
+
+    // ===== Regional cards (2 rows × 4 cols) =====
+    m.jsxs("div", {
+      className: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3",
+      children: REGIONS.map(reg => m.jsxs(Je, {
+        className: "p-4",
+        children: [m.jsxs("div", {
+          className: "flex items-center gap-2 mb-2",
+          children: [m.jsx("div", {
+            className: "w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center shrink-0",
+            children: m.jsx(lg, { className: "text-emerald-600", size: 14 })
+          }), m.jsx("h3", {
+            className: "text-xs font-bold text-gray-700 uppercase tracking-wide",
+            children: reg
           })]
+        }), m.jsx("div", {
+          className: "text-2xl font-extrabold text-gray-800",
+          children: loading ? m.jsx("span", { className: "inline-block w-8 h-6 bg-gray-100 rounded animate-pulse" }) : (usersByRegion[reg] || 0)
+        }), m.jsx("p", {
+          className: "text-[10px] text-gray-400 uppercase font-semibold mt-0.5",
+          children: "Active users"
+        }), m.jsxs("p", {
+          className: "text-[10px] text-gray-300 mt-1",
+          children: [(marketsByRegion[reg] || 0), " markets"]
+        })]
+      }, reg))
+    }),
+
+    // ===== Summary cards (Total Users, Total Markets, Reports Today, Active Regions) =====
+    m.jsxs("div", {
+      className: "grid grid-cols-2 sm:grid-cols-4 gap-3",
+      children: [
+        // Total Users
+        m.jsxs(Je, {
+          className: "p-4 border-l-4 border-emerald-400",
+          children: [m.jsxs("div", {
+            className: "flex items-center gap-2 mb-1",
+            children: [m.jsx("div", {
+              className: "w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center",
+              children: m.jsx(nh, { className: "text-emerald-600", size: 16 })
+            }), m.jsx("span", { className: "text-[10px] font-bold text-gray-400 uppercase", children: "Total Users" })]
+          }), m.jsx("div", {
+            className: "text-2xl font-extrabold text-gray-800",
+            children: loading ? m.jsx("span", { className: "inline-block w-8 h-6 bg-gray-100 rounded animate-pulse" }) : users.length
+          }), m.jsxs("p", {
+            className: "text-[10px] text-gray-400 mt-0.5",
+            children: [activeUsers.length, " active · ", users.length - activeUsers.length, " inactive"]
+          })]
+        }),
+        // Total Markets
+        m.jsxs(Je, {
+          className: "p-4 border-l-4 border-blue-400",
+          children: [m.jsxs("div", {
+            className: "flex items-center gap-2 mb-1",
+            children: [m.jsx("div", {
+              className: "w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center",
+              children: m.jsx(so, { className: "text-blue-600", size: 16 })
+            }), m.jsx("span", { className: "text-[10px] font-bold text-gray-400 uppercase", children: "Total Markets" })]
+          }), m.jsx("div", {
+            className: "text-2xl font-extrabold text-gray-800",
+            children: loading ? m.jsx("span", { className: "inline-block w-8 h-6 bg-gray-100 rounded animate-pulse" }) : markets.length
+          }), m.jsxs("p", {
+            className: "text-[10px] text-gray-400 mt-0.5",
+            children: [markets.filter(mk => mk.team === "MO").length, " MO · ", markets.filter(mk => mk.team === "MS").length, " MS · ", markets.filter(mk => mk.team === "PO").length, " PO"]
+          })]
+        }),
+        // Reports Today
+        m.jsxs(Je, {
+          className: "p-4 border-l-4 border-amber-400",
+          children: [m.jsxs("div", {
+            className: "flex items-center gap-2 mb-1",
+            children: [m.jsx("div", {
+              className: "w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center",
+              children: m.jsx(qi, { className: "text-amber-600", size: 16 })
+            }), m.jsx("span", { className: "text-[10px] font-bold text-gray-400 uppercase", children: "Reports Today" })]
+          }), m.jsx("div", {
+            className: "text-2xl font-extrabold text-gray-800",
+            children: loading ? m.jsx("span", { className: "inline-block w-8 h-6 bg-gray-100 rounded animate-pulse" }) : reportsToday.length
+          }), m.jsxs("p", {
+            className: "text-[10px] text-gray-400 mt-0.5",
+            children: [reportsToday.filter(r => r.type === "MO").length, " MO · ", reportsToday.filter(r => r.type === "MS").length, " MS"]
+          })]
+        }),
+        // Active Regions
+        m.jsxs(Je, {
+          className: "p-4 border-l-4 border-purple-400",
+          children: [m.jsxs("div", {
+            className: "flex items-center gap-2 mb-1",
+            children: [m.jsx("div", {
+              className: "w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center",
+              children: m.jsx(au, { className: "text-purple-600", size: 16 })
+            }), m.jsx("span", { className: "text-[10px] font-bold text-gray-400 uppercase", children: "Active Regions" })]
+          }), m.jsx("div", {
+            className: "text-2xl font-extrabold text-gray-800",
+            children: loading ? m.jsx("span", { className: "inline-block w-8 h-6 bg-gray-100 rounded animate-pulse" }) : activeRegionsCount
+          }), m.jsx("p", {
+            className: "text-[10px] text-gray-400 mt-0.5",
+            children: "of 7 regions"
+          })]
+        })
+      ]
+    }),
+
+    // ===== Quick links (existing navigation cards) =====
+    m.jsx("div", {
+      className: "border-t border-gray-100 pt-4",
+      children: m.jsxs("div", {
+        children: [m.jsx("h2", {
+          className: "text-sm font-bold text-gray-700 mb-3",
+          children: "Quick Links"
+        }), m.jsx("div", {
+          className: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3",
+          children: xD.map(r => {
+            const n = r.icon;
+            return m.jsxs(Je, {
+              className: "p-4 cursor-pointer hover:shadow-lg hover:border-emerald-300 transition-all group",
+              onClick: () => t(r.path),
+              children: [m.jsxs("div", {
+                className: "flex items-start justify-between",
+                children: [m.jsx("div", {
+                  className: `w-9 h-9 rounded-lg ${r.iconBg} flex items-center justify-center`,
+                  children: m.jsx(n, {
+                    size: 18,
+                    className: r.iconText
+                  })
+                }), m.jsx(s3, {
+                  size: 14,
+                  className: "text-gray-300 group-hover:text-emerald-500 transition-colors"
+                })]
+              }), m.jsx("h3", {
+                className: "text-sm font-bold text-gray-800 mt-2",
+                children: r.label
+              }), m.jsx("p", {
+                className: "text-[11px] text-gray-400 mt-0.5",
+                children: r.desc
+              })]
+            }, r.path)
+          })
         })]
       })
-    }), m.jsx("div", {
-      className: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4",
-      children: xD.map(r => {
-        const n = r.icon;
-        return m.jsxs(Je, {
-          className: "p-5 cursor-pointer hover:shadow-lg hover:border-emerald-300 transition-all group",
-          onClick: () => t(r.path),
-          children: [m.jsxs("div", {
-            className: "flex items-start justify-between",
-            children: [m.jsx("div", {
-              className: `w-10 h-10 rounded-lg ${r.iconBg} flex items-center justify-center`,
-              children: m.jsx(n, {
-                size: 20,
-                className: r.iconText
-              })
-            }), m.jsx(s3, {
-              size: 16,
-              className: "text-gray-300 group-hover:text-emerald-500 transition-colors"
-            })]
-          }), m.jsx("h3", {
-            className: "text-sm font-bold text-gray-800 mt-3",
-            children: r.label
-          }), m.jsx("p", {
-            className: "text-xs text-gray-400 mt-0.5",
-            children: r.desc
-          })]
-        }, r.path)
-      })
     })]
-  })
+  });
 }
 
 function yD(e, t) {
@@ -34808,7 +35041,7 @@ function Zn({
 }
 
 function qD() {
-  const [e, t] = E.useState([]), [r, n] = E.useState(!0), [s, o] = E.useState(!1), [l, u] = E.useState(null), [d, h] = E.useState(""), [p, g] = E.useState(""), [y, b] = E.useState("MO"), _ = async () => {
+  const [e, t] = E.useState([]), [r, n] = E.useState(!0), [s, o] = E.useState(!1), [l, u] = E.useState(null), [d, h] = E.useState(""), [p, g] = E.useState(""), [y, b] = E.useState("MO"), [rg, setRg] = E.useState(""), [filterTeam, setFilterTeam] = E.useState("all"), [filterRegion, setFilterRegion] = E.useState("all"), [bulkMode, setBulkMode] = E.useState(!1), [bulkText, setBulkText] = E.useState(""), [bulkCity, setBulkCity] = E.useState(""), _ = async () => {
     n(!0);
     const T = await za();
     t(T), n(!1)
@@ -34817,21 +35050,43 @@ function qD() {
     _()
   }, []);
   const w = () => {
-      u(null), h(""), g(""), b("MO"), o(!0)
+      u(null), h(""), g(""), b("MO"), setRg(filterRegion !== "all" ? filterRegion : ""), setBulkMode(!1), setBulkText(""), setBulkCity(""), o(!0)
     },
     S = T => {
-      u(T), h(T.name), g(T.city), b(T.team), o(!0)
+      u(T), h(T.name), g(T.city), b(T.team), setRg(T.region || ""), o(!0)
     },
     C = async () => {
+      if (bulkMode && !l) {
+        // ===== Bulk insert =====
+        const names = bulkText.split("\n").map(x => x.trim()).filter(Boolean);
+        if (names.length === 0) { alert("Paste at least one market name"); return; }
+        try {
+          for (const nm of names) {
+            await k5({
+              name: nm,
+              city: bulkCity.trim() || "",
+              team: y,
+              region: rg.trim() || null
+            });
+          }
+          ui.success(names.length + " markets added");
+          o(!1), await _();
+        } catch (T) {
+          alert(T.message)
+        }
+        return;
+      }
       if (!(!d.trim() || !p.trim())) try {
         l ? await N5(l.id, {
           name: d,
           city: p,
-          team: y
+          team: y,
+          region: rg.trim() || null
         }) : await k5({
           name: d,
           city: p,
-          team: y
+          team: y,
+          region: rg.trim() || null
         }), o(!1), await _()
       } catch (T) {
         alert(T.message)
@@ -34867,6 +35122,32 @@ function qD() {
           className: "mr-1"
         }), " Add Market"]
       })]
+    }), m.jsx("div", {
+      className: "flex flex-wrap gap-1.5 mb-1",
+      children: ["all", "NORTHCENTRAL", "NORTHEAST", "NORTHWEST", "LAGOS", "SOUTHSOUTH", "SOUTHEAST", "SOUTHWEST"].map(reg => m.jsx("button", {
+        onClick: () => setFilterRegion(reg),
+        className: `text-[10px] font-bold uppercase px-2.5 py-1.5 rounded-lg border transition-all
+          ${filterRegion === reg ? (reg === "all" ? "bg-gray-700 text-white border-gray-700" : "bg-purple-600 text-white border-purple-600") : (reg === "all" ? "bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100" : "bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100")}`,
+        children: reg === "all" ? "All Regions" : reg
+      }, reg))
+    }), m.jsxs("div", {
+      className: "flex items-center gap-3 flex-wrap",
+      children: [m.jsxs("div", {
+        className: "flex flex-col gap-1",
+        children: [m.jsx(Qe, { className: "text-[10px] font-bold text-gray-400 uppercase", children: "Filter by Team" }), m.jsxs(qn, {
+          value: filterTeam,
+          onValueChange: T => setFilterTeam(T),
+          children: [m.jsx(Kn, { className: "w-40 h-8 text-xs", children: m.jsx(Yn, { placeholder: "All Teams" }) }), m.jsxs(Xn, {
+            children: [m.jsx(ft, { value: "all", children: "All Teams" }), m.jsx(ft, { value: "MO", children: "MO — Market Officer" }), m.jsx(ft, { value: "MS", children: "MS — Merchant Support" }), m.jsx(ft, { value: "PO", children: "PO — POS Officer" })]
+          })]
+        })]
+      }), (filterTeam !== "all") && m.jsx(ht, {
+        variant: "outline",
+        size: "sm",
+        onClick: () => setFilterTeam("all"),
+        className: "h-8 text-xs mt-5",
+        children: "Reset"
+      })]
     }), m.jsx(Je, {
       className: "overflow-hidden",
       children: r ? m.jsx("div", {
@@ -34878,7 +35159,7 @@ function qD() {
         }, N))
       }) : m.jsxs("div", {
         className: "divide-y divide-gray-100",
-        children: [e.map(T => m.jsxs("div", {
+        children: [e.filter(T => (filterTeam === "all" || T.team === filterTeam) && (filterRegion === "all" || T.region === filterRegion)).map(T => m.jsxs("div", {
           className: "flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors",
           children: [m.jsxs("div", {
             children: [m.jsx("p", {
@@ -34894,6 +35175,9 @@ function qD() {
               className: `text-[10px] font-bold uppercase px-2 py-0.5 rounded-full
                     ${T.team==="MO"?"bg-emerald-100 text-emerald-700":T.team==="PO"?"bg-cyan-100 text-cyan-700":"bg-pink-100 text-pink-700"}`,
               children: T.team
+            }), T.region && m.jsx("span", {
+              className: "text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-purple-100 text-purple-700",
+              children: T.region
             }), m.jsx("button", {
               onClick: () => S(T),
               className: "text-gray-400 hover:text-blue-500 transition-colors",
@@ -34908,63 +35192,172 @@ function qD() {
               })
             })]
           })]
-        }, T.id)), e.length === 0 && m.jsx("p", {
+        }, T.id)), e.filter(T => (filterTeam === "all" || T.team === filterTeam) && (filterRegion === "all" || T.region === filterRegion)).length === 0 && m.jsx("p", {
           className: "text-sm text-gray-400 text-center py-8",
-          children: "No markets yet"
+          children: filterTeam === "all" && filterRegion === "all" ? "No markets yet" : "No markets match the selected filters"
         })]
       })
     }), m.jsx(Og, {
       open: s,
       onOpenChange: o,
       children: m.jsxs(jg, {
-        children: [m.jsx(Mg, {
-          children: m.jsx(Lg, {
+        children: [m.jsxs("div", {
+          className: "flex items-center justify-between",
+          children: [m.jsx(Lg, {
             className: "text-base",
-            children: l ? "Edit Market" : "Add Market"
-          })
-        }), m.jsxs("div", {
-          className: "space-y-3 py-2",
-          children: [m.jsxs("div", {
-            children: [m.jsx(Qe, {
-              className: "text-xs",
-              children: "Market Name"
-            }), m.jsx(yt, {
-              value: d,
-              onChange: T => h(T.target.value),
-              placeholder: "e.g. Sabon Tasha Market"
-            })]
-          }), m.jsxs("div", {
-            children: [m.jsx(Qe, {
-              className: "text-xs",
-              children: "City"
-            }), m.jsx(yt, {
-              value: p,
-              onChange: T => g(T.target.value),
-              placeholder: "e.g. Kaduna"
-            })]
-          }), m.jsxs("div", {
-            children: [m.jsx(Qe, {
-              className: "text-xs",
-              children: "Team"
-            }), m.jsxs(qn, {
-              value: y,
-              onValueChange: T => b(T),
-              children: [m.jsx(Kn, {
-                children: m.jsx(Yn, {})
-              }), m.jsxs(Xn, {
-                children: [m.jsx(ft, {
-                  value: "MO",
-                  children: "MO — Market Officer"
-                }), m.jsx(ft, {
-                  value: "MS",
-                  children: "MS — Merchant Support"
-                }), m.jsx(ft, {
-                  value: "PO",
-                  children: "PO — POS Officer"
-                })]
-              })]
+            children: l ? "Edit Market" : (bulkMode ? "Bulk Add Markets" : "Add Market")
+          }), !l && m.jsxs("div", {
+            className: "flex gap-1 bg-gray-100 p-0.5 rounded-lg",
+            children: [m.jsx("button", {
+              type: "button",
+              onClick: () => setBulkMode(!1),
+              className: `px-3 py-1 text-xs font-bold rounded-md transition-all ${!bulkMode ? "bg-white text-emerald-700 shadow-sm" : "text-gray-400"}`,
+              children: "Single"
+            }), m.jsx("button", {
+              type: "button",
+              onClick: () => setBulkMode(!0),
+              className: `px-3 py-1 text-xs font-bold rounded-md transition-all ${bulkMode ? "bg-white text-emerald-700 shadow-sm" : "text-gray-400"}`,
+              children: "Bulk Paste"
             })]
           })]
+        }), m.jsxs("div", {
+          className: "space-y-3 py-2",
+          children: [bulkMode && !l ? [
+            // ===== Bulk mode: textarea + optional city =====
+            m.jsxs("div", {
+              children: [m.jsx(Qe, {
+                className: "text-xs",
+                children: "Market Names (one per line)"
+              }), m.jsx("textarea", {
+                value: bulkText,
+                onChange: T => setBulkText(T.target.value),
+                placeholder: "Kurmi Market\nKofar Wambai Market\nSabon Gari Market\nKawo Market",
+                className: "w-full min-h-[140px] px-3 py-2 text-sm border border-gray-200 rounded-lg resize-y font-mono mt-1"
+              }), m.jsxs("p", {
+                className: "text-[10px] text-gray-400 mt-1",
+                children: [bulkText.split("\n").map(x => x.trim()).filter(Boolean).length, " markets will be added"]
+              })]
+            }),
+            m.jsxs("div", {
+              children: [m.jsx(Qe, {
+                className: "text-xs",
+                children: "City (optional — applies to all)"
+              }), m.jsx(yt, {
+                value: bulkCity,
+                onChange: T => setBulkCity(T.target.value),
+                placeholder: "e.g. Kano (leave blank if varies)"
+              })]
+            }),
+            m.jsxs("div", {
+              children: [m.jsx(Qe, {
+                className: "text-xs",
+                children: "Region (applies to all)"
+              }), m.jsxs(qn, {
+                value: rg || "none",
+                onValueChange: T => setRg(T === "none" ? "" : T),
+                children: [m.jsx(Kn, {
+                  children: m.jsx(Yn, {
+                    placeholder: "Select region..."
+                  })
+                }), m.jsxs(Xn, {
+                  children: [m.jsx(ft, {
+                    value: "none",
+                    children: "— No Region —"
+                  }), ["NORTHCENTRAL", "NORTHEAST", "NORTHWEST", "LAGOS", "SOUTHSOUTH", "SOUTHEAST", "SOUTHWEST"].map(r => m.jsx(ft, {
+                    value: r,
+                    children: r
+                  }, r))]
+                })]
+              })]
+            }),
+            m.jsxs("div", {
+              children: [m.jsx(Qe, {
+                className: "text-xs",
+                children: "Team (applies to all)"
+              }), m.jsxs(qn, {
+                value: y,
+                onValueChange: T => b(T),
+                children: [m.jsx(Kn, {
+                  children: m.jsx(Yn, {})
+                }), m.jsxs(Xn, {
+                  children: [m.jsx(ft, {
+                    value: "MO",
+                    children: "MO — Market Officer"
+                  }), m.jsx(ft, {
+                    value: "MS",
+                    children: "MS — Merchant Support"
+                  }), m.jsx(ft, {
+                    value: "PO",
+                    children: "PO — POS Officer"
+                  })]
+                })]
+              })]
+            })
+          ] : [
+            // ===== Single mode (original form) =====
+            m.jsxs("div", {
+              children: [m.jsx(Qe, {
+                className: "text-xs",
+                children: "Market Name"
+              }), m.jsx(yt, {
+                value: d,
+                onChange: T => h(T.target.value),
+                placeholder: "e.g. Sabon Tasha Market"
+              })]
+            }), m.jsxs("div", {
+              children: [m.jsx(Qe, {
+                className: "text-xs",
+                children: "City"
+              }), m.jsx(yt, {
+                value: p,
+                onChange: T => g(T.target.value),
+                placeholder: "e.g. Kaduna"
+              })]
+            }), m.jsxs("div", {
+              children: [m.jsx(Qe, {
+                className: "text-xs",
+                children: "Region"
+              }), m.jsxs(qn, {
+                value: rg || "none",
+                onValueChange: T => setRg(T === "none" ? "" : T),
+                children: [m.jsx(Kn, {
+                  children: m.jsx(Yn, {
+                    placeholder: "Select region..."
+                  })
+                }), m.jsxs(Xn, {
+                  children: [m.jsx(ft, {
+                    value: "none",
+                    children: "— No Region —"
+                  }), ["NORTHCENTRAL", "NORTHEAST", "NORTHWEST", "LAGOS", "SOUTHSOUTH", "SOUTHEAST", "SOUTHWEST"].map(r => m.jsx(ft, {
+                    value: r,
+                    children: r
+                  }, r))]
+                })]
+              })]
+            }), m.jsxs("div", {
+              children: [m.jsx(Qe, {
+                className: "text-xs",
+                children: "Team"
+              }), m.jsxs(qn, {
+                value: y,
+                onValueChange: T => b(T),
+                children: [m.jsx(Kn, {
+                  children: m.jsx(Yn, {})
+                }), m.jsxs(Xn, {
+                  children: [m.jsx(ft, {
+                    value: "MO",
+                    children: "MO — Market Officer"
+                  }), m.jsx(ft, {
+                    value: "MS",
+                    children: "MS — Merchant Support"
+                  }), m.jsx(ft, {
+                    value: "PO",
+                    children: "PO — POS Officer"
+                  })]
+                })]
+              })]
+            })
+          ]]
         }), m.jsxs(Dg, {
           children: [m.jsx(ht, {
             variant: "outline",
@@ -34975,7 +35368,7 @@ function qD() {
             onClick: C,
             size: "sm",
             className: "bg-emerald-600 hover:bg-emerald-700",
-            children: "Save"
+            children: bulkMode && !l ? "Add All Markets" : "Save"
           })]
         })]
       })
@@ -34985,7 +35378,7 @@ function qD() {
 const YD = ["admin", "manager", "mo_supervisor", "ms_supervisor", "mo", "ms", "po", "inactive"];
 
 function KD() {
-  const [e, t] = E.useState([]), [r, n] = E.useState([]), [s, o] = E.useState(!0), [l, u] = E.useState(!1), [d, h] = E.useState(null), [p, g] = E.useState(""), [y, b] = E.useState(""), [_, w] = E.useState("mo"), [S, C] = E.useState(""), [k, T] = E.useState(""), [N, F] = E.useState(""), U = async () => {
+  const [e, t] = E.useState([]), [r, n] = E.useState([]), [s, o] = E.useState(!0), [l, u] = E.useState(!1), [d, h] = E.useState(null), [p, g] = E.useState(""), [y, b] = E.useState(""), [_, w] = E.useState("mo"), [S, C] = E.useState(""), [k, T] = E.useState(""), [N, F] = E.useState(""), [filterRole, setFilterRole] = E.useState("all"), [acctRegion, setAcctRegion] = E.useState(""), U = async () => {
     o(!0);
     const [fe, pe] = await Promise.all([Ol(), za()]);
     t(fe), n(pe), o(!1)
@@ -34994,13 +35387,15 @@ function KD() {
     U()
   }, []);
   const R = () => {
-      g(""), b(""), w("mo"), C(""), T(""), F("")
+      g(""), b(""), w("mo"), C(""), T(""), F(""), setAcctRegion("")
     },
     L = () => {
       h(null), R(), u(!0)
     },
     P = fe => {
-      h(fe), g(fe.name), b(fe.username), w(fe.role), C(fe.code || ""), T(""), F(fe.market_id || ""), u(!0)
+      h(fe), g(fe.name), b(fe.username), w(fe.role), C(fe.code || ""), T(""), F(fe.market_id || ""),
+      (() => { const mk = r.find(m => m.id === fe.market_id); setAcctRegion(mk?.region || ""); })(),
+      u(!0)
     },
     [J, ee] = E.useState(""),
     te = async () => {
@@ -35083,6 +35478,24 @@ ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin','manag
           children: pl[fe]
         }, fe)
       })
+    }), m.jsxs("div", {
+      className: "flex items-center gap-3 flex-wrap",
+      children: [m.jsxs("div", {
+        className: "flex flex-col gap-1",
+        children: [m.jsx(Qe, { className: "text-[10px] font-bold text-gray-400 uppercase", children: "Filter by Role" }), m.jsxs(qn, {
+          value: filterRole,
+          onValueChange: fe => setFilterRole(fe),
+          children: [m.jsx(Kn, { className: "w-44 h-8 text-xs", children: m.jsx(Yn, { placeholder: "All Roles" }) }), m.jsxs(Xn, {
+            children: [m.jsx(ft, { value: "all", children: "All Roles" }), m.jsx(ft, { value: "admin", children: "Admin" }), m.jsx(ft, { value: "manager", children: "Manager" }), m.jsx(ft, { value: "mo_supervisor", children: "MO Supervisor" }), m.jsx(ft, { value: "ms_supervisor", children: "MS Supervisor" }), m.jsx(ft, { value: "mo", children: "Market Officer (MO)" }), m.jsx(ft, { value: "ms", children: "Merchant Support (MS)" }), m.jsx(ft, { value: "po", children: "POS Officer (PO)" }), m.jsx(ft, { value: "inactive", children: "Inactive" })]
+          })]
+        })]
+      }), (filterRole !== "all") && m.jsx(ht, {
+        variant: "outline",
+        size: "sm",
+        onClick: () => setFilterRole("all"),
+        className: "h-8 text-xs mt-5",
+        children: "Reset"
+      })]
     }), m.jsx(Je, {
       className: "overflow-hidden",
       children: s ? m.jsx("div", {
@@ -35094,7 +35507,7 @@ ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin','manag
         }, pe))
       }) : m.jsxs("div", {
         className: "divide-y divide-gray-100",
-        children: [e.map(fe => {
+        children: [e.filter(fe => filterRole === "all" || fe.role === filterRole).map(fe => {
           const pe = Cp[fe.role] ?? {
               bg: "bg-gray-50",
               text: "text-gray-700",
@@ -35142,9 +35555,9 @@ ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin','manag
               })]
             })]
           }, fe.id)
-        }), e.length === 0 && m.jsx("p", {
+        }), (filterRole !== "all" ? e.filter(fe => fe.role === filterRole) : e).length === 0 && m.jsx("p", {
           className: "text-sm text-gray-400 text-center py-8",
-          children: "No accounts yet"
+          children: e.length === 0 ? "No accounts yet" : "No accounts with role: " + (pl[filterRole] || filterRole)
         })]
       })
     }), m.jsx(Og, {
@@ -35175,7 +35588,7 @@ ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin','manag
             }), m.jsxs(qn, {
               value: _,
               onValueChange: fe => {
-                w(fe), F(""), ee("")
+                w(fe), F(""), setAcctRegion(""), ee("")
               },
               children: [m.jsx(Kn, {
                 children: m.jsx(Yn, {})
@@ -35239,12 +35652,33 @@ ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin','manag
               onChange: fe => T(fe.target.value),
               placeholder: d ? "••••••" : "Create password"
             })]
+          }), (_ === "mo" || _ === "po") && m.jsxs("div", {
+            children: [m.jsx(Qe, {
+              className: "text-xs",
+              children: "Region"
+            }), m.jsxs(qn, {
+              value: acctRegion || "none",
+              onValueChange: fe => { setAcctRegion(fe === "none" ? "" : fe); F(""); },
+              children: [m.jsx(Kn, {
+                children: m.jsx(Yn, {
+                  placeholder: "Select region..."
+                })
+              }), m.jsxs(Xn, {
+                children: [m.jsx(ft, {
+                  value: "none",
+                  children: "— All Regions —"
+                }), ["NORTHCENTRAL", "NORTHEAST", "NORTHWEST", "LAGOS", "SOUTHSOUTH", "SOUTHEAST", "SOUTHWEST"].map(reg => m.jsx(ft, {
+                  value: reg,
+                  children: reg
+                }, reg))]
+              })]
+            })]
           }), m.jsxs("div", {
             children: [m.jsxs(Qe, {
               className: "text-xs",
-              children: ["Assigned Market", (_ === "mo" || _ === "ms") && m.jsxs("span", {
+              children: ["Assigned Market", (_ === "mo" || _ === "ms" || _ === "po") && m.jsxs("span", {
                 className: "ml-1 text-gray-400 font-normal",
-                children: ["(showing ", _.toUpperCase(), " markets only)"]
+                children: ["(showing ", _.toUpperCase(), acctRegion ? " / " + acctRegion : "", " markets only)"]
               })]
             }), m.jsxs(qn, {
               value: N || "none",
@@ -35259,7 +35693,11 @@ ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin','manag
                 children: [m.jsx(ft, {
                   value: "none",
                   children: "No market assigned"
-                }), r.filter(fe => _ === "mo" ? fe.team === "MO" : _ === "ms" ? fe.team === "MS" : _ === "po" ? fe.team === "PO" : !0).map(fe => m.jsxs(ft, {
+                }), r.filter(fe => {
+                  const teamMatch = _ === "mo" ? fe.team === "MO" : _ === "ms" ? fe.team === "MS" : _ === "po" ? fe.team === "PO" : !0;
+                  const regionMatch = !acctRegion || fe.region === acctRegion;
+                  return teamMatch && regionMatch;
+                }).map(fe => m.jsxs(ft, {
                   value: fe.id,
                   children: [fe.name, " (", fe.city, ")"]
                 }, fe.id))]
@@ -36157,7 +36595,7 @@ async function fetchMyChangeOfStatus(userId) {
 // Fetch ALL change-of-status requests (supervisor view).
 async function fetchAllChangeOfStatus() {
   const { data, error } = await It.from("change_of_status_requests")
-    .select("*, user:submitted_by(id, name, code)")
+    .select("*, user:submitted_by(id, name, code, market_id, role)")
     .order("created_at", { ascending: false });
   if (error) throw new Error(`Failed to fetch requests: ${error.message}`);
   return data || [];
@@ -36173,6 +36611,76 @@ async function updateChangeOfStatusStatus(id, newStatus) {
     .single();
   if (error) throw new Error(`Failed to update request: ${error.message}`);
   return data;
+}
+
+// ============================================================================
+// Supervisor Access Control
+// Controls which panels each supervisor can see.
+// Stored in app_settings table as key = "supervisor_access_<userId>".
+// Cascades to MO/PO staff assigned to the supervisor.
+// ============================================================================
+
+// Fetch access control for a single supervisor. Returns the access object,
+// or null if no custom config exists (meaning all panels enabled by default).
+async function fetchSupervisorAccess(userId) {
+  if (!userId) return null;
+  try {
+    const { data, error } = await It.from("app_settings")
+      .select("value")
+      .eq("key", "supervisor_access_" + userId)
+      .single();
+    if (error || !data || !data.value) return null;
+    return data.value;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Fetch access for ALL supervisors (for admin panel listing).
+async function fetchAllSupervisorAccess() {
+  try {
+    const { data, error } = await It.from("app_settings")
+      .select("key, value")
+      .like("key", "supervisor_access_%");
+    if (error || !data) return {};
+    const map = {};
+    data.forEach(row => {
+      const userId = row.key.replace("supervisor_access_", "");
+      if (userId) map[userId] = row.value || {};
+    });
+    return map;
+  } catch (e) {
+    return {};
+  }
+}
+
+// Save access control for a supervisor.
+async function saveSupervisorAccess(userId, access) {
+  const { error } = await It.from("app_settings").upsert({
+    key: "supervisor_access_" + userId,
+    value: access,
+    updated_at: new Date().toISOString()
+  });
+  if (error) throw new Error(`Failed to save access control: ${error.message}`);
+  return !0;
+}
+
+// Fetch access control for a MO/PO staff member by looking up their supervisor.
+// Returns the supervisor's access object, or null if no supervisor / no config.
+async function fetchSupervisorAccessByStaff(userId) {
+  if (!userId) return null;
+  try {
+    // Step 1: get the user's supervisor_id
+    const { data: user, error: uErr } = await It.from("users")
+      .select("supervisor_id")
+      .eq("id", userId)
+      .single();
+    if (uErr || !user || !user.supervisor_id) return null;
+    // Step 2: fetch the supervisor's access control
+    return await fetchSupervisorAccess(user.supervisor_id);
+  } catch (e) {
+    return null;
+  }
 }
 
 // ============================================================================
@@ -36436,7 +36944,7 @@ function formatMOReportText(e, t, tasks) {
     _ = _rNum(r, "visitation"),
     w = r.challenges || "Nil";
   return [
-    "MS-Northwest  Daily Report",
+    "MS Daily Report",
     "Date: " + i,
     "",
     "City: " + a,
@@ -36510,7 +37018,7 @@ function formatMSReportText(e, t) {
     w = _rPos(r, "stock_rep"),
     b = r.challenge || r.challenges || "Nil";
   return [
-    "MS-Northwest  Daily Report",
+    "MS Daily Report",
     "Date: " + s,
     "MS code: " + i,
     "City: " + a,
@@ -52445,12 +52953,12 @@ function Eh({
       const H = Ma.book_new();
       H.Props = {
         Title: "Daily Reports",
-        Subject: "Northwest Region",
+        Subject: "All Regions",
         Author: "Daily Report System",
         CreatedDate: new Date
       };
       const Q = Ma.aoa_to_sheet([
-        ["DAILY REPORT SYSTEM -- NORTHWEST REGION"],
+        ["DAILY REPORT SYSTEM -- ALL REGIONS"],
         ["Export Date:", new Date().toLocaleString()],
         ["Filter:", "All Types"],
         ["Total Records:", z.length],
@@ -53319,7 +53827,7 @@ function XU({
                     background: "#92D050",
                     border: "1px solid #000"
                   },
-                  children: "MO NORTHWEST DAILY REPORT"
+                  children: "MO DAILY REPORT"
                 })
               }), m.jsxs("tr", {
                 style: {
@@ -53720,7 +54228,7 @@ function QU() {
         y(!1)
       }
     }
-  }, C = e.find(N => N.id === s), k = C?.role === "mo_supervisor" ? "MO" : "MS", T = r.filter(N => N.team === k);
+  }, C = e.find(N => N.id === s), k = C?.role === "mo_supervisor" ? ["MO", "PO"] : ["MS"], kLabel = C?.role === "mo_supervisor" ? "MO and PO" : "MS", T = r.filter(N => k.includes(N.team));
   return m.jsxs("div", {
     className: "space-y-5",
     children: [m.jsxs("div", {
@@ -53802,39 +54310,98 @@ function QU() {
             }), " is a ", m.jsx("strong", {
               children: pl[C?.role || "mo_supervisor"]
             }), ". They can only see ", m.jsx("strong", {
-              children: k
+              children: kLabel
             }), " reports from the markets you select below. ", m.jsx("strong", {
-              children: ["All ", k, " staff in the selected markets will be automatically assigned to this supervisor."]
+              children: ["All ", kLabel, " staff in the selected markets will be automatically assigned to this supervisor."]
             })]
           })
         }), m.jsx("div", {
-          className: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mb-4",
-          children: T.map(N => {
-            const F = l.has(N.id);
-            return m.jsxs("label", {
-              className: `flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all
-                      ${F?"bg-emerald-50 border-emerald-300":"bg-white border-gray-200 hover:border-gray-300"}`,
-              onClick: () => w(N.id),
-              children: [m.jsx("input", {
-                type: "checkbox",
-                checked: F,
-                onChange: () => {},
-                className: "w-4 h-4 accent-emerald-500 shrink-0"
-              }), m.jsxs("div", {
-                className: "flex-1 min-w-0",
-                children: [m.jsx("p", {
-                  className: "text-sm font-bold text-gray-700",
-                  children: N.name
-                }), m.jsx("p", {
-                  className: "text-[10px] text-gray-400",
-                  children: N.city
+          className: "space-y-4 mb-4",
+          children: (() => {
+            // Group markets by region
+            const regions = {};
+            const noRegion = [];
+            T.forEach(N => {
+              const reg = N.region || "";
+              if (reg) {
+                if (!regions[reg]) regions[reg] = [];
+                regions[reg].push(N);
+              } else {
+                noRegion.push(N);
+              }
+            });
+            const regionNames = Object.keys(regions).sort();
+            const renderMarketCard = (N) => {
+              const F = l.has(N.id);
+              return m.jsxs("label", {
+                className: `flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all
+                        ${F?"bg-emerald-50 border-emerald-300":"bg-white border-gray-200 hover:border-gray-300"}`,
+                onClick: () => w(N.id),
+                children: [m.jsx("input", {
+                  type: "checkbox",
+                  checked: F,
+                  onChange: () => {},
+                  className: "w-4 h-4 accent-emerald-500 shrink-0"
+                }), m.jsxs("div", {
+                  className: "flex-1 min-w-0",
+                  children: [m.jsx("p", {
+                    className: "text-sm font-bold text-gray-700",
+                    children: N.name
+                  }), m.jsx("p", {
+                    className: "text-[10px] text-gray-400",
+                    children: N.city
+                  })]
+                }), F && m.jsx(ys, {
+                  size: 16,
+                  className: "text-emerald-500 shrink-0"
                 })]
-              }), F && m.jsx(ys, {
-                size: 16,
-                className: "text-emerald-500 shrink-0"
-              })]
-            }, N.id)
-          })
+              }, N.id);
+            };
+            const renderRegion = (regName, marketsInRegion) => {
+              const allSelected = marketsInRegion.every(m => l.has(m.id));
+              const someSelected = marketsInRegion.some(m => l.has(m.id));
+              return m.jsxs("div", {
+                children: [m.jsxs("div", {
+                  className: "flex items-center justify-between mb-2",
+                  children: [m.jsxs("h4", {
+                    className: "text-xs font-bold text-purple-700 uppercase tracking-wider flex items-center gap-1.5",
+                    children: [m.jsx(au, { size: 12 }), " ", regName, " ", m.jsx("span", { className: "text-gray-400 font-normal", children: "(" + marketsInRegion.length + " markets)" })]
+                  }), m.jsx("button", {
+                    type: "button",
+                    onClick: () => {
+                      u(F => {
+                        const newSet = new Set(F);
+                        if (allSelected) {
+                          marketsInRegion.forEach(m => newSet.delete(m.id));
+                        } else {
+                          marketsInRegion.forEach(m => newSet.add(m.id));
+                        }
+                        return newSet;
+                      });
+                    },
+                    className: `text-[10px] font-bold uppercase px-2 py-1 rounded border transition-colors
+                      ${allSelected ? "bg-emerald-100 text-emerald-700 border-emerald-300" : "bg-white text-gray-500 border-gray-200 hover:bg-gray-50"}`,
+                    children: allSelected ? "✓ All Selected" : "Select All"
+                  })]
+                }), m.jsx("div", {
+                  className: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2",
+                  children: marketsInRegion.map(renderMarketCard)
+                })]
+              }, regName);
+            };
+            return [
+              ...regionNames.map(rn => renderRegion(rn, regions[rn])),
+              noRegion.length > 0 && m.jsxs("div", {
+                children: [m.jsx("h4", {
+                  className: "text-xs font-bold text-gray-400 uppercase tracking-wider mb-2",
+                  children: "No Region Assigned"
+                }), m.jsx("div", {
+                  className: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2",
+                  children: noRegion.map(renderMarketCard)
+                })]
+              }, "no-region")
+            ];
+          })()
         }), m.jsxs("div", {
           className: "flex items-center justify-between",
           children: [m.jsxs("p", {
@@ -54009,7 +54576,7 @@ function ZU() {
       try {
         const T = await jl(e.id);
         o(T.markets);
-        const N = T.staff.filter(R => R.role === "mo");
+        const N = T.staff.filter(R => R.role === "mo" || R.role === "po");
         u(N);
         const F = {
             canViewMO: !0,
@@ -54033,7 +54600,7 @@ function ZU() {
   E.useEffect(() => {
     y()
   }, [y]);
-  const b = s.filter(T => T.team === "MO"),
+  const b = s.filter(T => T.team === "MO" || T.team === "PO"),
     _ = new Set(d.map(T => T.market_id)),
     w = Math.max(0, b.length - _.size),
     S = new Set(d.map(T => T.user_id)),
@@ -57534,17 +58101,27 @@ function ChangeOfStatusPage() {
 // Change of Status — Supervisor Request Table (all MOs, status update)
 // ============================================================================
 function SupervisorRequestTable() {
-  const { user: e } = Qn();
+  const { user: e, assignedMarkets } = Qn();
   const [requests, setRequests] = E.useState([]);
   const [loading, setLoading] = E.useState(!0);
   const [updating, setUpdating] = E.useState({});
   const [filterStatus, setFilterStatus] = E.useState("all");
   const [copying, setCopying] = E.useState(!1);
 
+  // The supervisor's assigned market IDs — requests are scoped to these markets
+  const myMarketIds = E.useMemo(() => new Set((assignedMarkets || []).map(mk => mk.id)), [assignedMarkets]);
+
   const load = async () => {
     setLoading(!0);
     try {
-      setRequests(await fetchAllChangeOfStatus());
+      const all = await fetchAllChangeOfStatus();
+      // Filter to only requests from MO/PO users whose market is in this supervisor's assigned markets.
+      // The user object is joined on the request; check its market_id.
+      // Requests from users without a market_id are excluded (supervisors shouldn't see them).
+      const scoped = myMarketIds.size === 0
+        ? all
+        : all.filter(r => r.user?.market_id && myMarketIds.has(r.user.market_id));
+      setRequests(scoped);
     } catch (err) {
       console.error("Failed to load requests:", err);
     } finally {
@@ -57552,7 +58129,7 @@ function SupervisorRequestTable() {
     }
   };
 
-  E.useEffect(() => { load() }, []);
+  E.useEffect(() => { load() }, [myMarketIds.size]);
 
   const handleStatusChange = async (id, newStatus) => {
     setUpdating(prev => ({ ...prev, [id]: !0 }));
@@ -58122,6 +58699,7 @@ function POMyReports() {
 // Supervisor — PO Reports panel (all POs, with filters)
 // ============================================================================
 function SupervisorPOReports() {
+  const { assignedMarkets } = Qn();
   const [reports, setReports] = E.useState([]);
   const [poUsers, setPOUsers] = E.useState([]);
   const [markets, setMarkets] = E.useState([]);
@@ -58133,13 +58711,21 @@ function SupervisorPOReports() {
   const [statusDate, setStatusDate] = E.useState(() => new Date().toISOString().split("T")[0]);
   const [showPreview, setShowPreview] = E.useState(!1);
 
+  // The supervisor's assigned market IDs (region-scoped)
+  const myMarketIds = E.useMemo(() => new Set((assignedMarkets || []).map(mk => mk.id)), [assignedMarkets]);
+
   const load = async () => {
     setLoading(!0);
     try {
       const [rpts, users, mkts] = await Promise.all([fetchAllPOReports(), fetchPOUsers(), za()]);
-      setReports(rpts);
-      setPOUsers(users);
-      setMarkets(mkts);
+      // Filter to only PO reports/markets in this supervisor's assigned markets
+      const myRpts = myMarketIds.size === 0 ? rpts : rpts.filter(r => !r.market_id || myMarketIds.has(r.market_id));
+      const myMkts = myMarketIds.size === 0 ? mkts : mkts.filter(mk => myMarketIds.has(mk.id));
+      const myUserIds = new Set(myRpts.map(r => r.user_id).filter(Boolean));
+      const myUsers = users.filter(u => myUserIds.has(u.id));
+      setReports(myRpts);
+      setPOUsers(myUsers);
+      setMarkets(myMkts);
     } catch (err) {
       console.error("Failed to load PO data:", err);
     } finally {
@@ -58147,7 +58733,7 @@ function SupervisorPOReports() {
     }
   };
 
-  E.useEffect(() => { load() }, []);
+  E.useEffect(() => { load() }, [myMarketIds.size]);
 
   // Build unique PO list for filter dropdown
   const poList = Array.from(new Map(reports.map(r => [r.user?.id, r.user]).filter(([id]) => id)).values());
@@ -58458,7 +59044,7 @@ function POPreviewModal({ reports, markets, onClose, onExcel }) {
                       colSpan: 4 + poPosCols.length * 4 + 3,
                       className: "text-center font-bold text-sm py-2 px-3 text-black",
                       style: { background: "#92D050", border: "1px solid #000" },
-                      children: "PO NORTHWEST DAILY REPORT"
+                      children: "PO DAILY REPORT"
                     })
                   }),
                   // Main header row — yellow background
@@ -58582,6 +59168,718 @@ function POPreviewModal({ reports, markets, onClose, onExcel }) {
   });
 }
 
+
+
+// ============================================================================
+// Supervisor — Region-scoped Markets panel
+// Same capabilities as admin, but filtered to supervisor's assigned regions
+// ============================================================================
+function SupervisorMarketsPage() {
+  const { user: e, assignedMarkets } = Qn();
+  const [markets, setMarkets] = E.useState([]);
+  const [loading, setLoading] = E.useState(!0);
+  const [showDialog, setShowDialog] = E.useState(!1);
+  const [editTarget, setEditTarget] = E.useState(null);
+  const [name, setName] = E.useState("");
+  const [city, setCity] = E.useState("");
+  const [team, setTeam] = E.useState("MO");
+  const [region, setRegion] = E.useState("");
+  const [bulkMode, setBulkMode] = E.useState(!1);
+  const [bulkText, setBulkText] = E.useState("");
+  const [bulkCity, setBulkCity] = E.useState("");
+  const [filterTeam, setFilterTeam] = E.useState("all");
+  const [filterRegion, setFilterRegion] = E.useState("all");
+
+  // The supervisor's regions (derived from their assigned markets)
+  const myRegions = E.useMemo(() => {
+    const set = new Set();
+    (assignedMarkets || []).forEach(m => { if (m.region) set.add(m.region); });
+    return Array.from(set);
+  }, [assignedMarkets]);
+
+  const load = async () => {
+    setLoading(!0);
+    try {
+      const all = await za();
+      // Filter to only markets in supervisor's regions
+      const filtered = all.filter(m => myRegions.length === 0 || myRegions.includes(m.region));
+      setMarkets(filtered);
+    } catch (err) {
+      console.error("Failed to load markets:", err);
+    } finally {
+      setLoading(!1);
+    }
+  };
+
+  E.useEffect(() => { load() }, [myRegions.join(",")]);
+
+  const reset = () => {
+    setEditTarget(null), setName(""), setCity(""), setTeam("MO"),
+    setRegion(filterRegion !== "all" ? filterRegion : ""),
+    setBulkMode(!1), setBulkText(""), setBulkCity(""), setShowDialog(!0);
+  };
+
+  const edit = (m) => {
+    setEditTarget(m), setName(m.name), setCity(m.city), setTeam(m.team),
+    setRegion(m.region || ""), setBulkMode(!1), setShowDialog(!0);
+  };
+
+  const save = async () => {
+    if (bulkMode && !editTarget) {
+      const names = bulkText.split("\n").map(x => x.trim()).filter(Boolean);
+      if (names.length === 0) { alert("Paste at least one market name"); return; }
+      try {
+        for (const nm of names) {
+          await k5({ name: nm, city: bulkCity.trim() || "", team, region: region || null });
+        }
+        ui.success(names.length + " markets added");
+        setShowDialog(!1); await load();
+      } catch (err) { alert(err.message); }
+      return;
+    }
+    if (!name.trim() || !city.trim()) return;
+    try {
+      if (editTarget) {
+        await N5(editTarget.id, { name, city, team, region: region || null });
+      } else {
+        await k5({ name, city, team, region: region || null });
+      }
+      setShowDialog(!1); await load();
+    } catch (err) { alert(err.message); }
+  };
+
+  const del = async (id) => {
+    if (!confirm("Delete this market?")) return;
+    try { await R5(id); await load(); }
+    catch (err) { alert(err.message); }
+  };
+
+  const filtered = markets.filter(m =>
+    (filterTeam === "all" || m.team === filterTeam) &&
+    (filterRegion === "all" || m.region === filterRegion)
+  );
+
+  return m.jsxs("div", {
+    className: "space-y-4",
+    children: [m.jsxs("div", {
+      className: "flex items-center justify-between",
+      children: [m.jsxs("div", {
+        children: [m.jsxs("h1", {
+          className: "text-xl font-extrabold text-gray-800 flex items-center gap-2",
+          children: [m.jsx(so, { className: "text-emerald-600", size: 22 }), "Markets"]
+        }), m.jsxs("p", {
+          className: "text-xs text-gray-400 mt-1",
+          children: ["Manage markets in your region(s): ", myRegions.join(", ") || "None assigned"]
+        })]
+      }), m.jsxs(ht, {
+        onClick: reset,
+        size: "sm",
+        className: "bg-emerald-600 hover:bg-emerald-700",
+        children: [m.jsx(ug, { size: 14, className: "mr-1" }), " Add Market"]
+      })]
+    }),
+
+    // Region chips (only supervisor's regions)
+    m.jsx("div", {
+      className: "flex flex-wrap gap-1.5 mb-1",
+      children: ["all", ...myRegions].map(reg => m.jsx("button", {
+        onClick: () => setFilterRegion(reg),
+        className: `text-[10px] font-bold uppercase px-2.5 py-1.5 rounded-lg border transition-all
+          ${filterRegion === reg ? (reg === "all" ? "bg-gray-700 text-white border-gray-700" : "bg-purple-600 text-white border-purple-600") : (reg === "all" ? "bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100" : "bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100")}`,
+        children: reg === "all" ? "All My Regions" : reg
+      }, reg))
+    }),
+
+    // Team filter
+    m.jsxs("div", {
+      className: "flex items-center gap-3 flex-wrap",
+      children: [m.jsxs("div", {
+        className: "flex flex-col gap-1",
+        children: [m.jsx(Qe, { className: "text-[10px] font-bold text-gray-400 uppercase", children: "Filter by Team" }), m.jsxs(qn, {
+          value: filterTeam,
+          onValueChange: setFilterTeam,
+          children: [m.jsx(Kn, { className: "w-40 h-8 text-xs", children: m.jsx(Yn, { placeholder: "All Teams" }) }), m.jsxs(Xn, {
+            children: [m.jsx(ft, { value: "all", children: "All Teams" }), m.jsx(ft, { value: "MO", children: "MO — Market Officer" }), m.jsx(ft, { value: "MS", children: "MS — Merchant Support" }), m.jsx(ft, { value: "PO", children: "PO — POS Officer" })]
+          })]
+        })]
+      })]
+    }),
+
+    // Market list
+    m.jsx(Je, {
+      className: "overflow-hidden",
+      children: loading ? m.jsx("div", {
+        className: "p-4 space-y-3",
+        children: Array.from({ length: 5 }).map((_, i) => m.jsx(Zn, { className: "h-12" }, i))
+      }) : m.jsxs("div", {
+        className: "divide-y divide-gray-100",
+        children: [filtered.map(T => m.jsxs("div", {
+          className: "flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors",
+          children: [m.jsxs("div", {
+            children: [m.jsx("p", { className: "text-sm font-bold text-gray-800", children: T.name }), m.jsx("p", { className: "text-xs text-gray-400", children: T.city })]
+          }), m.jsxs("div", {
+            className: "flex items-center gap-3",
+            children: [m.jsx("span", {
+              className: `text-[10px] font-bold uppercase px-2 py-0.5 rounded-full
+                ${T.team==="MO"?"bg-emerald-100 text-emerald-700":T.team==="PO"?"bg-cyan-100 text-cyan-700":"bg-pink-100 text-pink-700"}`,
+              children: T.team
+            }), T.region && m.jsx("span", {
+              className: "text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-purple-100 text-purple-700",
+              children: T.region
+            }), m.jsx("button", {
+              onClick: () => edit(T),
+              className: "text-gray-400 hover:text-blue-500 transition-colors",
+              children: m.jsx(cg, { size: 14 })
+            }), m.jsx("button", {
+              onClick: () => del(T.id),
+              className: "text-gray-400 hover:text-red-500 transition-colors",
+              children: m.jsx(dg, { size: 14 })
+            })]
+          })]
+        }, T.id)), filtered.length === 0 && m.jsx("p", {
+          className: "text-sm text-gray-400 text-center py-8",
+          children: "No markets in your regions yet"
+        })]
+      })
+    }),
+
+    // Add/Edit dialog
+    m.jsx(Og, {
+      open: showDialog,
+      onOpenChange: setShowDialog,
+      children: m.jsxs(jg, {
+        children: [m.jsxs("div", {
+          className: "flex items-center justify-between",
+          children: [m.jsx(Lg, {
+            className: "text-base",
+            children: editTarget ? "Edit Market" : (bulkMode ? "Bulk Add Markets" : "Add Market")
+          }), !editTarget && m.jsxs("div", {
+            className: "flex gap-1 bg-gray-100 p-0.5 rounded-lg",
+            children: [m.jsx("button", {
+              type: "button",
+              onClick: () => setBulkMode(!1),
+              className: `px-3 py-1 text-xs font-bold rounded-md transition-all ${!bulkMode ? "bg-white text-emerald-700 shadow-sm" : "text-gray-400"}`,
+              children: "Single"
+            }), m.jsx("button", {
+              type: "button",
+              onClick: () => setBulkMode(!0),
+              className: `px-3 py-1 text-xs font-bold rounded-md transition-all ${bulkMode ? "bg-white text-emerald-700 shadow-sm" : "text-gray-400"}`,
+              children: "Bulk Paste"
+            })]
+          })]
+        }), m.jsx("div", {
+          className: "space-y-3 py-2",
+          children: bulkMode && !editTarget ? [
+            m.jsxs("div", {
+              children: [m.jsx(Qe, { className: "text-xs", children: "Market Names (one per line)" }),
+                m.jsx("textarea", {
+                  value: bulkText,
+                  onChange: T => setBulkText(T.target.value),
+                  placeholder: "Kurmi Market\nKofar Wambai Market\nSabon Gari Market",
+                  className: "w-full min-h-[140px] px-3 py-2 text-sm border border-gray-200 rounded-lg resize-y font-mono mt-1"
+                }),
+                m.jsxs("p", { className: "text-[10px] text-gray-400 mt-1", children: [bulkText.split("\n").map(x => x.trim()).filter(Boolean).length, " markets will be added"] })]
+            }),
+            m.jsxs("div", {
+              children: [m.jsx(Qe, { className: "text-xs", children: "City (optional — applies to all)" }),
+                m.jsx(yt, { value: bulkCity, onChange: T => setBulkCity(T.target.value), placeholder: "e.g. Kano" })]
+            })
+          ] : [
+            m.jsxs("div", {
+              children: [m.jsx(Qe, { className: "text-xs", children: "Market Name" }),
+                m.jsx(yt, { value: name, onChange: T => setName(T.target.value), placeholder: "e.g. Sabon Tasha Market" })]
+            }),
+            m.jsxs("div", {
+              children: [m.jsx(Qe, { className: "text-xs", children: "City" }),
+                m.jsx(yt, { value: city, onChange: T => setCity(T.target.value), placeholder: "e.g. Kaduna" })]
+            })
+          ]
+        }),
+        // Region (locked to supervisor's regions)
+        m.jsxs("div", {
+          children: [m.jsx(Qe, { className: "text-xs", children: "Region" }),
+            m.jsxs(qn, {
+              value: region || "none",
+              onValueChange: T => setRegion(T === "none" ? "" : T),
+              children: [m.jsx(Kn, { children: m.jsx(Yn, { placeholder: "Select region..." }) }),
+                m.jsxs(Xn, {
+                  children: [m.jsx(ft, { value: "none", children: "— No Region —" }),
+                    myRegions.map(r => m.jsx(ft, { value: r, children: r }, r))]
+                })]
+            })]
+        }),
+        // Team
+        m.jsxs("div", {
+          children: [m.jsx(Qe, { className: "text-xs", children: "Team" }),
+            m.jsxs(qn, {
+              value: team,
+              onValueChange: setTeam,
+              children: [m.jsx(Kn, { children: m.jsx(Yn, {}) }),
+                m.jsxs(Xn, {
+                  children: [m.jsx(ft, { value: "MO", children: "MO — Market Officer" }),
+                    m.jsx(ft, { value: "MS", children: "MS — Merchant Support" }),
+                    m.jsx(ft, { value: "PO", children: "PO — POS Officer" })]
+                })]
+            })]
+        }),
+        m.jsxs(Dg, {
+          children: [m.jsx(ht, { variant: "outline", onClick: () => setShowDialog(!1), size: "sm", children: "Cancel" }),
+            m.jsx(ht, { onClick: save, size: "sm", className: "bg-emerald-600 hover:bg-emerald-700",
+              children: bulkMode && !editTarget ? "Add All Markets" : "Save" })]
+        })]
+      })
+    })]
+  });
+}
+
+// ============================================================================
+// Supervisor — Region-scoped Accounts panel
+// Same capabilities as admin, but filtered to supervisor's assigned regions
+// ============================================================================
+function SupervisorAccountsPage() {
+  const { user: e, assignedMarkets } = Qn();
+  const [users, setUsers] = E.useState([]);
+  const [markets, setMarkets] = E.useState([]);
+  const [loading, setLoading] = E.useState(!0);
+  const [showDialog, setShowDialog] = E.useState(!1);
+  const [editTarget, setEditTarget] = E.useState(null);
+  const [name, setName] = E.useState("");
+  const [username, setUsername] = E.useState("");
+  const [role, setRole] = E.useState("mo");
+  const [code, setCode] = E.useState("");
+  const [password, setPassword] = E.useState("");
+  const [marketId, setMarketId] = E.useState("");
+  const [acctRegion, setAcctRegion] = E.useState("");
+  const [filterRole, setFilterRole] = E.useState("all");
+  const [error, setError] = E.useState("");
+
+  const myRegions = E.useMemo(() => {
+    const set = new Set();
+    (assignedMarkets || []).forEach(m => { if (m.region) set.add(m.region); });
+    return Array.from(set);
+  }, [assignedMarkets]);
+
+  const load = async () => {
+    setLoading(!0);
+    try {
+      const [allUsers, allMarkets] = await Promise.all([Ol(), za()]);
+      // Filter markets to supervisor's regions
+      const regionMarkets = allMarkets.filter(m => myRegions.length === 0 || myRegions.includes(m.region));
+      setMarkets(regionMarkets);
+      // Filter users: those whose market is in supervisor's regions,
+      // OR those with no market but whose role is mo/ms/po (less strict—include them)
+      const regionMarketIds = new Set(regionMarkets.map(m => m.id));
+      const filtered = allUsers.filter(u => {
+        if (u.role === "admin" || u.role === "manager") return false;
+        // Include if their market is in our regions, OR if they're mo/ms/po with no market assigned yet
+        if (u.market_id && regionMarketIds.has(u.market_id)) return true;
+        return false;
+      });
+      setUsers(filtered);
+    } catch (err) {
+      console.error("Failed to load accounts:", err);
+    } finally {
+      setLoading(!1);
+    }
+  };
+
+  E.useEffect(() => { load() }, [myRegions.join(",")]);
+
+  const reset = () => {
+    setEditTarget(null), setName(""), setUsername(""), setRole("mo"),
+    setCode(""), setPassword(""), setMarketId(""), setAcctRegion(""), setError(""), setShowDialog(!0);
+  };
+
+  const edit = (u) => {
+    setEditTarget(u), setName(u.name), setUsername(u.username), setRole(u.role),
+    setCode(u.code || ""), setPassword(""), setMarketId(u.market_id || ""),
+    (() => { const mk = markets.find(m => m.id === u.market_id); setAcctRegion(mk?.region || ""); })(),
+    setError(""), setShowDialog(!0);
+  };
+
+  const save = async () => {
+    setError("");
+    if (!name.trim() || !username.trim()) return;
+    try {
+      if (editTarget) {
+        await VO(editTarget.id, {
+          name, role, code: code || null,
+          market_id: marketId || null,
+          password: password || null
+        });
+      } else {
+        if (!password) { setError("Password is required for new accounts"); return; }
+        await r2({
+          username: username.toLowerCase(), password, name, role,
+          code: code || null, market_id: marketId || null
+        });
+      }
+      setShowDialog(!1); await load();
+    } catch (err) {
+      setError(err.message || "Failed to save account");
+    }
+  };
+
+  const del = async (id) => {
+    if (!confirm("Delete this user?\n\nIf this user has submitted reports, their reports will be reassigned to an admin, then the user will be deleted.")) return;
+    try { await GO(id); await load(); }
+    catch (err) { alert(err.message); }
+  };
+
+  const filtered = filterRole === "all" ? users : users.filter(u => u.role === filterRole);
+
+  // Markets filtered by selected region + role team
+  const roleTeam = role === "mo" ? "MO" : role === "ms" ? "MS" : role === "po" ? "PO" : null;
+  const availableMarkets = markets.filter(m =>
+    (!roleTeam || m.team === roleTeam) &&
+    (!acctRegion || m.region === acctRegion)
+  );
+
+  return m.jsxs("div", {
+    className: "space-y-4",
+    children: [m.jsxs("div", {
+      className: "flex items-center justify-between",
+      children: [m.jsxs("div", {
+        children: [m.jsxs("h1", {
+          className: "text-xl font-extrabold text-gray-800 flex items-center gap-2",
+          children: [m.jsx(nh, { className: "text-blue-600", size: 22 }), "Accounts"]
+        }), m.jsxs("p", {
+          className: "text-xs text-gray-400 mt-1",
+          children: ["Manage user accounts in your region(s): ", myRegions.join(", ") || "None assigned"]
+        })]
+      }), m.jsxs(ht, {
+        onClick: reset,
+        size: "sm",
+        className: "bg-blue-600 hover:bg-blue-700",
+        children: [m.jsx(ug, { size: 14, className: "mr-1" }), " Add Account"]
+      })]
+    }),
+
+    // Role filter
+    m.jsxs("div", {
+      className: "flex items-center gap-3 flex-wrap",
+      children: [m.jsxs("div", {
+        className: "flex flex-col gap-1",
+        children: [m.jsx(Qe, { className: "text-[10px] font-bold text-gray-400 uppercase", children: "Filter by Role" }), m.jsxs(qn, {
+          value: filterRole,
+          onValueChange: setFilterRole,
+          children: [m.jsx(Kn, { className: "w-44 h-8 text-xs", children: m.jsx(Yn, { placeholder: "All Roles" }) }), m.jsxs(Xn, {
+            children: [m.jsx(ft, { value: "all", children: "All Roles" }),
+              m.jsx(ft, { value: "mo_supervisor", children: "MO Supervisor" }),
+              m.jsx(ft, { value: "ms_supervisor", children: "MS Supervisor" }),
+              m.jsx(ft, { value: "mo", children: "Market Officer (MO)" }),
+              m.jsx(ft, { value: "ms", children: "Merchant Support (MS)" }),
+              m.jsx(ft, { value: "po", children: "POS Officer (PO)" }),
+              m.jsx(ft, { value: "inactive", children: "Inactive" })]
+          })]
+        })]
+      })]
+    }),
+
+    // User list
+    m.jsx(Je, {
+      className: "overflow-hidden",
+      children: loading ? m.jsx("div", {
+        className: "p-4 space-y-3",
+        children: Array.from({ length: 5 }).map((_, i) => m.jsx(Zn, { className: "h-14" }, i))
+      }) : m.jsxs("div", {
+        className: "divide-y divide-gray-100",
+        children: [filtered.map(u => {
+          const pe = Cp[u.role] ?? { bg: "bg-gray-50", text: "text-gray-700", border: "border-gray-200" };
+          const mk = markets.find(mk => mk.id === u.market_id);
+          return m.jsxs("div", {
+            className: "flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors",
+            children: [m.jsxs("div", {
+              className: "flex items-center gap-3",
+              children: [m.jsx("div", {
+                className: `w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${pe.bg} ${pe.text} border ${pe.border}`,
+                children: u.name.charAt(0)
+              }), m.jsxs("div", {
+                children: [m.jsxs("div", {
+                  className: "flex items-center gap-2",
+                  children: [m.jsx("p", { className: "text-sm font-bold text-gray-800", children: u.name }),
+                    m.jsx("span", { className: `text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full ${pe.bg} ${pe.text}`, children: pl[u.role] })]
+                }), m.jsxs("p", {
+                  className: "text-[11px] text-gray-400",
+                  children: ["@", u.username, u.code ? ` · ${u.code}` : "", mk ? ` · ${mk.name} (${mk.city})` : "", mk?.region ? ` · ${mk.region}` : ""]
+                })]
+              })]
+            }), m.jsxs("div", {
+              className: "flex items-center gap-2",
+              children: [m.jsx("button", { onClick: () => edit(u), className: "text-gray-400 hover:text-blue-500 transition-colors p-1", children: m.jsx(cg, { size: 14 }) }),
+                m.jsx("button", { onClick: () => del(u.id), className: "text-gray-400 hover:text-red-500 transition-colors p-1", children: m.jsx(dg, { size: 14 }) })]
+            })]
+          }, u.id);
+        }), filtered.length === 0 && m.jsx("p", {
+          className: "text-sm text-gray-400 text-center py-8",
+          children: "No accounts in your regions yet"
+        })]
+      })
+    }),
+
+    // Add/Edit dialog
+    m.jsx(Og, {
+      open: showDialog,
+      onOpenChange: setShowDialog,
+      children: m.jsxs(jg, {
+        className: "max-w-md max-h-[90vh] overflow-y-auto",
+        children: [m.jsx(Mg, {
+          children: m.jsx(Lg, { className: "text-base", children: editTarget ? "Edit Account" : "Add Account" })
+        }), m.jsxs("div", {
+          className: "space-y-3 py-2",
+          children: [
+            m.jsxs("div", {
+              children: [m.jsx(Qe, { className: "text-xs", children: "Full Name" }),
+                m.jsx(yt, { value: name, onChange: T => setName(T.target.value), placeholder: "John Doe" })]
+            }),
+            m.jsxs("div", {
+              children: [m.jsx(Qe, { className: "text-xs", children: "Role" }),
+                m.jsxs(qn, {
+                  value: role,
+                  onValueChange: T => { setRole(T); setMarketId(""); setAcctRegion(""); },
+                  children: [m.jsx(Kn, { children: m.jsx(Yn, {}) }),
+                    m.jsxs(Xn, {
+                      children: [m.jsx(ft, { value: "mo_supervisor", children: "MO Supervisor" }),
+                        m.jsx(ft, { value: "ms_supervisor", children: "MS Supervisor" }),
+                        m.jsx(ft, { value: "mo", children: "Market Officer (MO)" }),
+                        m.jsx(ft, { value: "ms", children: "Merchant Support (MS)" }),
+                        m.jsx(ft, { value: "po", children: "POS Officer (PO)" }),
+                        m.jsx(ft, { value: "inactive", children: "Inactive (disable account)" })]
+                    })]
+                })]
+            }),
+            m.jsxs("div", {
+              children: [m.jsx(Qe, { className: "text-xs", children: "Username" }),
+                m.jsx(yt, { value: username, onChange: T => setUsername(T.target.value), placeholder: "username", disabled: !!editTarget })]
+            }),
+            (role === "mo" || role === "ms" || role === "po") && m.jsxs("div", {
+              children: [m.jsxs(Qe, { className: "text-xs", children: ["Employee Code ", role === "ms" && "(= login username)"] }),
+                m.jsx(yt, { value: code, onChange: T => setCode(T.target.value), placeholder: "e.g. MS10237" })]
+            }),
+            m.jsxs("div", {
+              children: [m.jsxs(Qe, { className: "text-xs", children: ["Password ", editTarget && "(leave blank to keep)"] }),
+                m.jsx(yt, { type: "password", value: password, onChange: T => setPassword(T.target.value), placeholder: editTarget ? "••••••" : "Create password" })]
+            }),
+            // Region selector (locked to supervisor's regions)
+            (role === "mo" || role === "po") && m.jsxs("div", {
+              children: [m.jsx(Qe, { className: "text-xs", children: "Region" }),
+                m.jsxs(qn, {
+                  value: acctRegion || "none",
+                  onValueChange: T => { setAcctRegion(T === "none" ? "" : T); setMarketId(""); },
+                  children: [m.jsx(Kn, { children: m.jsx(Yn, { placeholder: "Select region..." }) }),
+                    m.jsxs(Xn, {
+                      children: [m.jsx(ft, { value: "none", children: "— All Regions —" }),
+                        myRegions.map(r => m.jsx(ft, { value: r, children: r }, r))]
+                    })]
+                })]
+            }),
+            m.jsxs("div", {
+              children: [m.jsxs(Qe, { className: "text-xs", children: ["Assigned Market", (role === "mo" || role === "ms" || role === "po") && m.jsxs("span", { className: "ml-1 text-gray-400 font-normal", children: ["(showing ", role.toUpperCase(), acctRegion ? " / " + acctRegion : "", " markets only)"] })] }),
+                m.jsxs(qn, {
+                  value: marketId || "none",
+                  onValueChange: T => setMarketId(T === "none" ? "" : T),
+                  children: [m.jsx(Kn, { children: m.jsx(Yn, { placeholder: "No market" }) }),
+                    m.jsxs(Xn, {
+                      children: [m.jsx(ft, { value: "none", children: "No market assigned" }),
+                        availableMarkets.map(mk => m.jsxs(ft, { value: mk.id, children: [mk.name, " (", mk.city, ")"] }, mk.id))]
+                    })]
+                })]
+            }),
+            error && m.jsx("div", {
+              className: "bg-red-50 border border-red-200 rounded-lg p-3",
+              children: m.jsx("p", { className: "text-xs text-red-600 font-medium", children: error })
+            })]
+          }),
+          m.jsxs(Dg, {
+            children: [m.jsx(ht, { variant: "outline", onClick: () => setShowDialog(!1), size: "sm", children: "Cancel" }),
+              m.jsx(ht, { onClick: save, size: "sm", className: "bg-emerald-600 hover:bg-emerald-700", children: "Save" })]
+          })]
+      })
+    })]
+  });
+}
+
+
+
+// ============================================================================
+// Admin — Access Control panel
+// Toggle which panels each supervisor can access
+// ============================================================================
+const SUPERVISOR_PANELS = [
+  { key: "dashboard", label: "Dashboard", desc: "Main overview page" },
+  { key: "reports", label: "MO Reports", desc: "Report database" },
+  { key: "calendar", label: "MO Calendar", desc: "Calendar view" },
+  { key: "ranking", label: "MO Rankings", desc: "Staff rankings" },
+  { key: "requests", label: "Request Table", desc: "Change of Status requests" },
+  { key: "po_reports", label: "PO Reports", desc: "PO report submissions" },
+  { key: "markets", label: "Markets", desc: "Manage markets in region" },
+  { key: "accounts", label: "Accounts", desc: "Manage accounts in region" }
+];
+
+function AccessControlPage() {
+  const [supervisors, setSupervisors] = E.useState([]);
+  const [accessMap, setAccessMap] = E.useState({});
+  const [loading, setLoading] = E.useState(!0);
+  const [selectedSup, setSelectedSup] = E.useState("");
+  const [saving, setSaving] = E.useState(!1);
+  const [dirty, setDirty] = E.useState(!1);
+
+  const load = async () => {
+    setLoading(!0);
+    try {
+      const [users, access] = await Promise.all([Ol(), fetchAllSupervisorAccess()]);
+      const sups = users.filter(u => u.role === "mo_supervisor" || u.role === "ms_supervisor");
+      setSupervisors(sups);
+      setAccessMap(access);
+      if (sups.length > 0 && !selectedSup) setSelectedSup(sups[0].id);
+    } catch (err) {
+      console.error("Failed to load access control:", err);
+    } finally {
+      setLoading(!1);
+    }
+  };
+
+  E.useEffect(() => { load() }, []);
+
+  const currentAccess = selectedSup ? (accessMap[selectedSup] || null) : null;
+  const workingAccess = E.useMemo(() => {
+    if (!currentAccess) {
+      const obj = {};
+      SUPERVISOR_PANELS.forEach(p => obj[p.key] = !0);
+      return obj;
+    }
+    return { ...currentAccess };
+  }, [currentAccess, selectedSup]);
+
+  const togglePanel = (key) => {
+    setAccessMap(prev => ({
+      ...prev,
+      [selectedSup]: { ...workingAccess, [key]: !workingAccess[key] }
+    }));
+    setDirty(!0);
+  };
+
+  const save = async () => {
+    if (!selectedSup) return;
+    setSaving(!0);
+    try {
+      await saveSupervisorAccess(selectedSup, workingAccess);
+      setDirty(!1);
+      ui.success("Access control saved — supervisor will see changes on next login");
+    } catch (err) {
+      ui.error(err.message || "Failed to save");
+    } finally {
+      setSaving(!1);
+    }
+  };
+
+  const selectedSupObj = supervisors.find(s => s.id === selectedSup);
+
+  return m.jsxs("div", {
+    className: "space-y-5",
+    children: [m.jsxs("div", {
+      children: [m.jsxs("h1", {
+        className: "text-xl font-extrabold text-gray-800 flex items-center gap-2",
+        children: [m.jsx(au, { className: "text-indigo-600", size: 22 }), "Access Control"]
+      }), m.jsx("p", {
+        className: "text-xs text-gray-400 mt-1",
+        children: "Toggle which panels each supervisor can access. Some regions may only need Change of Status."
+      })]
+    }),
+
+    m.jsxs(Je, {
+      className: "p-4",
+      children: [m.jsx(Qe, { className: "text-xs font-semibold text-gray-500 uppercase", children: "Select Supervisor" }),
+        loading ? m.jsx("p", { className: "text-xs text-gray-400 mt-2", children: "Loading supervisors..." })
+        : supervisors.length === 0 ? m.jsx("p", { className: "text-xs text-gray-400 mt-2", children: "No supervisors found" })
+        : m.jsxs(qn, {
+          value: selectedSup || undefined,
+          onValueChange: v => { setSelectedSup(v); setDirty(!1); },
+          children: [m.jsx(Kn, { className: "mt-1 max-w-md", children: m.jsx(Yn, { placeholder: "Choose a supervisor..." }) }),
+            m.jsx(Xn, {
+              children: supervisors.map(s => m.jsxs(ft, {
+                value: s.id,
+                children: [s.name, " (", pl[s.role], ")"]
+              }, s.id))
+            })]
+        })]
+    }),
+
+    selectedSup && m.jsxs(Je, {
+      className: "p-5",
+      children: [m.jsxs("div", {
+        className: "flex items-center justify-between mb-4",
+        children: [m.jsxs("div", {
+          children: [m.jsx("h3", { className: "text-sm font-bold text-gray-800", children: "Panels for " + (selectedSupObj?.name || "") }),
+            m.jsx("p", { className: "text-[10px] text-gray-400 mt-0.5", children: "Toggle off to hide a panel from this supervisor's sidebar" })]
+        }),
+          m.jsxs("div", { className: "flex gap-1",
+            children: [m.jsx("button", {
+              onClick: () => {
+                const allOn = {};
+                SUPERVISOR_PANELS.forEach(p => allOn[p.key] = !0);
+                setAccessMap(prev => ({ ...prev, [selectedSup]: allOn }));
+                setDirty(!0);
+              },
+              className: "text-[10px] font-bold uppercase px-2 py-1 rounded border bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100",
+              children: "Enable All"
+            }), m.jsx("button", {
+              onClick: () => {
+                const allOff = {};
+                SUPERVISOR_PANELS.forEach(p => allOff[p.key] = !1);
+                setAccessMap(prev => ({ ...prev, [selectedSup]: allOff }));
+                setDirty(!0);
+              },
+              className: "text-[10px] font-bold uppercase px-2 py-1 rounded border bg-red-50 text-red-700 border-red-200 hover:bg-red-100",
+              children: "Disable All"
+            })]
+          })]
+      }),
+      m.jsx("div", {
+        className: "grid grid-cols-1 sm:grid-cols-2 gap-2",
+        children: SUPERVISOR_PANELS.map(panel => {
+          const enabled = workingAccess[panel.key] !== !1;
+          return m.jsxs("label", {
+            className: `flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all
+              ${enabled ? "bg-emerald-50 border-emerald-300" : "bg-white border-gray-200 hover:border-gray-300"}`,
+            onClick: () => togglePanel(panel.key),
+            children: [m.jsx("input", {
+              type: "checkbox",
+              checked: enabled,
+              onChange: () => {},
+              className: "w-4 h-4 accent-emerald-500 shrink-0"
+            }), m.jsxs("div", {
+              className: "flex-1 min-w-0",
+              children: [m.jsx("p", { className: "text-sm font-bold text-gray-700", children: panel.label }),
+                m.jsx("p", { className: "text-[10px] text-gray-400", children: panel.desc })]
+            }), enabled && m.jsx(ys, { size: 16, className: "text-emerald-500 shrink-0" })]
+          }, panel.key);
+        })
+      }),
+      m.jsxs("div", {
+        className: "mt-4 flex items-center justify-between pt-4 border-t border-gray-100",
+        children: [m.jsx("p", {
+          className: "text-xs " + (dirty ? "text-amber-600 font-medium" : "text-gray-400"),
+          children: dirty ? "⚠ Unsaved changes — click Save to apply" : "✓ All changes saved"
+        }), m.jsx(ht, {
+          onClick: save,
+          disabled: saving || !dirty,
+          className: saving ? "bg-gray-400" : "bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6",
+          children: saving ? "Saving..." : "Save Access Control"
+        })]
+      })]
+    }),
+
+    m.jsx("div", {
+      className: "p-4 bg-blue-50 border border-blue-100 rounded-lg",
+      children: m.jsxs("p", {
+        className: "text-xs text-blue-700",
+        children: [m.jsx("strong", { children: "Note:" }), " Changes take effect when the supervisor logs in or refreshes their session. If all panels are disabled, the supervisor will only see the Dashboard."]
+      })
+    })]
+  });
+}
+
 function Vz() {
   const {
     user: e,
@@ -58629,6 +59927,9 @@ function Vz() {
                 path: "supervisors",
                 element: m.jsx(QU, {})
               }), m.jsx(Lt, {
+                path: "access-control",
+                element: m.jsx(AccessControlPage, {})
+              }), m.jsx(Lt, {
                 path: "preview-fields",
                 element: m.jsx(pfmComponent, {})
               }), m.jsx(Lt, {
@@ -58660,6 +59961,12 @@ function Vz() {
               }), m.jsx(Lt, {
                 path: "po-reports",
                 element: m.jsx(SupervisorPOReports, {})
+              }), m.jsx(Lt, {
+                path: "markets",
+                element: m.jsx(SupervisorMarketsPage, {})
+              }), m.jsx(Lt, {
+                path: "accounts",
+                element: m.jsx(SupervisorAccountsPage, {})
               })]
             })
           })
