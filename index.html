@@ -25972,13 +25972,21 @@ async function $O(e, t) {
   }
   return ng(s)
 }
+// Cache for Ol() — prevents redundant full-table fetches across page navigations.
+// TTL: 30 seconds. Invalidated on user create/update/delete.
+let _usersCache = null, _usersCacheTime = 0;
+function invalidateUsersCache() { _usersCache = null; _usersCacheTime = 0; }
 async function Ol() {
+  const now = Date.now();
+  if (_usersCache && (now - _usersCacheTime) < 30000) return _usersCache;
   const {
     data: e,
     error: t
-  } = await It.from("users").select("*, market:market_id(name, city, team)").order("name");
+  } = await It.from("users").select("id, name, username, role, code, market_id, supervisor_id, market:market_id(name, city, team)").order("name");
   if (t) throw new Error(`Failed to fetch users: ${t.message}`);
-  return (e || []).map(ng)
+  _usersCache = (e || []).map(ng);
+  _usersCacheTime = now;
+  return _usersCache
 }
 async function r2(e) {
   const {
@@ -25995,6 +26003,7 @@ async function r2(e) {
   const {
     data: r
   } = await It.from("users").select("*").eq("username", e.username.toLowerCase()).single();
+  invalidateUsersCache();
   return ng(r)
 }
 async function VO(e, t) {
@@ -26008,7 +26017,8 @@ async function VO(e, t) {
     p_market_id: t.market_id || null,
     p_password: t.password || null
   });
-  if (r) throw new Error(`Failed to update user: ${r.message}`)
+  if (r) throw new Error(`Failed to update user: ${r.message}`);
+  invalidateUsersCache()
 }
 async function GO(e) {
   // First, try the RPC. If it fails due to FK constraint on reports,
@@ -26041,6 +26051,7 @@ async function GO(e) {
         // Retry the delete
         const { error: retryErr } = await It.rpc("delete_app_user", { p_id: e });
         if (retryErr) throw new Error(`Failed to delete user after reassigning reports: ${retryErr.message}`);
+        invalidateUsersCache();
       } catch (reassignError) {
         throw new Error(`Cannot delete user: ${reassignError.message}. Please remove their reports first or contact admin.`)
       }
@@ -29471,13 +29482,20 @@ class C5 extends Ne.Component {
     }) : this.props.children
   }
 }
+// Cache for za() — prevents redundant market fetches.
+let _marketsCache = null, _marketsCacheTime = 0;
+function invalidateMarketsCache() { _marketsCache = null; _marketsCacheTime = 0; }
 async function za() {
+  const now = Date.now();
+  if (_marketsCache && (now - _marketsCacheTime) < 30000) return _marketsCache;
   const {
     data: e,
     error: t
   } = await It.from("markets").select("*").order("name");
   if (t) throw new Error(`Failed to fetch markets: ${t.message}`);
-  return e || []
+  _marketsCache = e || [];
+  _marketsCacheTime = now;
+  return _marketsCache
 }
 async function k5(e) {
   const {
@@ -29485,6 +29503,7 @@ async function k5(e) {
     error: r
   } = await It.from("markets").insert(e).select().single();
   if (r) throw new Error(`Failed to create market: ${r.message}`);
+  invalidateMarketsCache();
   return t
 }
 async function N5(e, t) {
@@ -29493,13 +29512,15 @@ async function N5(e, t) {
     error: n
   } = await It.from("markets").update(t).eq("id", e).select().single();
   if (n) throw new Error(`Failed to update market: ${n.message}`);
+  invalidateMarketsCache();
   return r
 }
 async function R5(e) {
   const {
     error: t
   } = await It.from("markets").delete().eq("id", e);
-  if (t) throw new Error(`Failed to delete market: ${t.message}`)
+  if (t) throw new Error(`Failed to delete market: ${t.message}`);
+  invalidateMarketsCache()
 }
 
 function yt({
@@ -35061,14 +35082,16 @@ function qD() {
         const names = bulkText.split("\n").map(x => x.trim()).filter(Boolean);
         if (names.length === 0) { alert("Paste at least one market name"); return; }
         try {
-          for (const nm of names) {
-            await k5({
-              name: nm,
-              city: bulkCity.trim() || "",
-              team: y,
-              region: rg.trim() || null
-            });
-          }
+          // Batch insert: single query instead of N sequential queries
+          const inserts = names.map(nm => ({
+            name: nm,
+            city: bulkCity.trim() || "",
+            team: y,
+            region: rg.trim() || null
+          }));
+          const { data: bulkResult, error: bulkErr } = await It.from("markets").insert(inserts);
+          if (bulkErr) throw new Error(bulkErr.message);
+          invalidateMarketsCache();
           ui.success(names.length + " markets added");
           o(!1), await _();
         } catch (T) {
@@ -35742,13 +35765,20 @@ async function rE(e) {
   if (n) throw new Error(`Failed to fetch tasks: ${n.message}`);
   return r || []
 }
+// Cache for ph() — prevents redundant task fetches.
+let _tasksCache = null, _tasksCacheTime = 0;
+function invalidateTasksCache() { _tasksCache = null; _tasksCacheTime = 0; }
 async function ph() {
+  const now = Date.now();
+  if (_tasksCache && (now - _tasksCacheTime) < 30000) return _tasksCache;
   const {
     data: e,
     error: t
   } = await It.from("tasks").select("*").order("order");
   if (t) throw new Error(`Failed to fetch tasks: ${t.message}`);
-  return e || []
+  _tasksCache = e || [];
+  _tasksCacheTime = now;
+  return _tasksCache
 }
 async function XD(e) {
   const {
@@ -35756,6 +35786,7 @@ async function XD(e) {
     error: r
   } = await It.from("tasks").insert(e).select().single();
   if (r) throw new Error(`Failed to create task: ${r.message}`);
+  invalidateTasksCache();
   return t
 }
 async function JD(e, t) {
@@ -35764,6 +35795,7 @@ async function JD(e, t) {
     error: n
   } = await It.from("tasks").update(t).eq("id", e).select().single();
   if (n) throw new Error(`Failed to update task: ${n.message}`);
+  invalidateTasksCache();
   return r
 }
 async function QD(e, t) {
@@ -35772,13 +35804,15 @@ async function QD(e, t) {
   } = await It.from("tasks").update({
     active: !t
   }).eq("id", e);
-  if (r) throw new Error(`Failed to toggle task: ${r.message}`)
+  if (r) throw new Error(`Failed to toggle task: ${r.message}`);
+  invalidateTasksCache()
 }
 async function ZD(e) {
   const {
     error: t
   } = await It.from("tasks").delete().eq("id", e);
-  if (t) throw new Error(`Failed to delete task: ${t.message}`)
+  if (t) throw new Error(`Failed to delete task: ${t.message}`);
+  invalidateTasksCache()
 }
 
 function eL() {
@@ -36503,6 +36537,7 @@ async function rL(e, t) {
     ascending: !1
   });
   t?.from && (r = r.gte("date", t.from)), t?.to && (r = r.lte("date", t.to)), t?.type && (r = r.eq("type", t.type)), t?.marketId && (r = r.eq("market_id", t.marketId)), t?.userId && (r = r.eq("user_id", t.userId));
+  r = r.limit(5000); // Safety cap: prevent loading more than 5000 records at once
   const {
     data: n,
     error: s
@@ -36708,10 +36743,15 @@ async function createPOReport(userId, marketId, date, submittedAt, data) {
 // Used to prevent double-submission when multiple POs share a market.
 async function fetchPOReportByMarket(marketId, date) {
   if (!marketId) return null;
+  // Use gte/lt for date range to handle both DATE and TIMESTAMPTZ columns
+  const nextDay = new Date(date + "T12:00:00");
+  nextDay.setDate(nextDay.getDate() + 1);
+  const nextDayStr = nextDay.toISOString().split("T")[0];
   const { data, error } = await It.from("po_reports")
     .select("*, user:user_id(id, name, code), market:market_id(id, name, city)")
     .eq("market_id", marketId)
-    .eq("date", date)
+    .gte("date", date)
+    .lt("date", nextDayStr)
     .order("submitted_at", { ascending: false })
     .limit(1);
   if (error) throw new Error(`Failed to check existing PO report: ${error.message}`);
@@ -36747,6 +36787,22 @@ async function fetchAllPOReports() {
     .order("date", { ascending: false })
     .order("submitted_at", { ascending: false });
   if (error) throw new Error(`Failed to fetch PO reports: ${error.message}`);
+  return data || [];
+}
+
+// Fetch PO reports for a specific date, filtered by market IDs.
+// Used by the MO Supervisor Dashboard to show PO submission status.
+async function fetchPOReportsByDate(marketIds, date) {
+  if (!marketIds || marketIds.length === 0) return [];
+  const nextDay = new Date(date + "T12:00:00");
+  nextDay.setDate(nextDay.getDate() + 1);
+  const nextDayStr = nextDay.toISOString().split("T")[0];
+  const { data, error } = await It.from("po_reports")
+    .select("*, user:user_id(id, name, code), market:market_id(id, name, city)")
+    .in("market_id", marketIds)
+    .gte("date", date)
+    .lt("date", nextDayStr);
+  if (error) throw new Error(`Failed to fetch PO reports by date: ${error.message}`);
   return data || [];
 }
 
@@ -36849,12 +36905,19 @@ function getMOCanonicalKey(task) {
 // Returns { smart, tpos, mpos, total } (zeros if not found).
 function readMOPOSField(e, t, fieldKey) {
   if (!e) return { smart: 0, tpos: 0, mpos: 0, total: 0 };
-  // Strategy 1: read canonical key directly (NEW reports — form stores here)
-  // This is the primary path. The form now stores POS data at data[fieldKey]
-  // via getMOCanonicalKey(), so we can read it directly.
+  // Strategy 1: read the fieldKey directly from the data object.
+  // This handles both system keys (e.g. "stock_new") and custom task IDs (UUID).
   const direct = e[fieldKey];
   if (direct && typeof direct === "object" && (direct.smart !== undefined || direct.tpos !== undefined || direct.total !== undefined)) {
     return { smart: direct.smart || 0, tpos: direct.tpos || 0, mpos: direct.mpos || 0, total: direct.total || 0 }
+  }
+  // Strategy 1b: if fieldKey looks like a UUID, it's a custom POS section task.
+  // Try reading from data.custom[fieldKey] as well.
+  if (e.custom && e.custom[fieldKey] && typeof e.custom[fieldKey] === "object") {
+    const c = e.custom[fieldKey];
+    if (c.smart !== undefined || c.tpos !== undefined || c.total !== undefined) {
+      return { smart: c.smart || 0, tpos: c.tpos || 0, mpos: c.mpos || 0, total: c.total || 0 }
+    }
   }
   // Strategy 2: search tasks for one matching this fieldKey, then read its data.
   // This handles OLD reports where data was stored at data[task.id] (UUID key).
@@ -36874,7 +36937,8 @@ function readMOPOSField(e, t, fieldKey) {
     for (const o of t) {
       if (!o || (o.team !== "MO" && o.team !== "Both")) continue;
       if (o.active === !1) continue;
-      if (o.key === fieldKey) { matchedTask = o; break; }
+      // Match by key, id, or label pattern (system keys only)
+      if (o.key === fieldKey || o.id === fieldKey) { matchedTask = o; break; }
       if (pattern && o.label && pattern.test(o.label)) { matchedTask = o; break; }
     }
     if (matchedTask) {
@@ -37404,19 +37468,21 @@ function getVisibleMOColumns(tasks) {
         if (isPreviewTaskVisible("MO", t.id)) {
           if (t.type === "pos_section") {
             // Admin-created POS section — treat as a POS section with Smart/TPOS/MPOS/Total
-            // Use canonical key so data can be found by readMOPOSField
-            const canonicalKey = getMOCanonicalKey(t) || t.id;
-            // Skip if this canonical key was already added as a system column
-            if (seenKeys.has(canonicalKey)) return;
-            seenKeys.add(canonicalKey);
+            // For CUSTOM POS sections, use the task's own key/id (NOT canonical key),
+            // because getMOCanonicalKey might map it to a system key, causing the column
+            // to be skipped (seenKeys already has the system key) and data to collide.
+            const customKey = t.key || t.id;
+            // Skip if this key was already added
+            if (seenKeys.has(customKey)) return;
+            seenKeys.add(customKey);
             cols.push({
-              key: canonicalKey,
+              key: customKey,
               label: t.label,
               bg: "#E8E8E8",
               fg: "#1a1a1a",
               isCustom: !1,
               isPosSection: !0,
-              dataKey: canonicalKey
+              dataKey: customKey
             })
           } else {
             // Non-POS custom task — single column
@@ -37445,13 +37511,27 @@ function getVisibleMOColumns(tasks) {
 function getMOCellValue(reportData, col, allTasks) {
   if (col.isPosSection && !col.isCustom) {
     // POS section: use readMOPOSField to robustly find the data
-    // (handles both system tasks with key=fieldKey and admin tasks with key=null)
-    return readMOPOSField(reportData, allTasks, col.dataKey)
+    // Try col.dataKey first, then col.key as fallback
+    const result = readMOPOSField(reportData, allTasks, col.dataKey);
+    if (result.total > 0 || result.smart > 0 || result.tpos > 0 || result.mpos > 0) {
+      return result
+    }
+    // Fallback: try col.key if different from col.dataKey
+    if (col.key && col.key !== col.dataKey) {
+      return readMOPOSField(reportData, allTasks, col.key)
+    }
+    return result
   }
   if (col.isCustom) {
-    // Custom task: the form stores at data[task.key || task.id]
-    const storageKey = col.taskId; // for custom tasks, taskId is the id
-    const customVal = reportData[storageKey] || (reportData.custom && reportData.custom[col.taskId]);
+    // Custom task: the form stores at data.custom[task.id]
+    // Read from custom first, then fall back to data[task.id] and data[task.key]
+    const customVal = (reportData.custom && reportData.custom[col.taskId]) ||
+                      reportData[col.taskId] ||
+                      (col.dataKey && reportData[col.dataKey]);
+    // Skip if value is an object (POS section data accidentally matched)
+    if (customVal && typeof customVal === "object" && !Array.isArray(customVal)) {
+      return col.taskType === "yesno" ? "" : 0
+    }
     if (col.taskType === "yesno") {
       return customVal === "Yes" ? "Y" : customVal === "No" ? "N" : (customVal || "")
     }
@@ -52923,6 +53003,12 @@ function Eh({
   E.useEffect(() => {
     za().then(u), Ol().then(h), ph().then(g)
   }, []);
+  // Reload tasks when preview task config changes (so new fields appear in preview)
+  E.useEffect(() => {
+    const handler = () => { ph().then(g) };
+    window.addEventListener("preview-tasks-changed", handler);
+    return () => window.removeEventListener("preview-tasks-changed", handler);
+  }, []);
   const fe = E.useCallback(async () => {
     b(!0);
     try {
@@ -53515,6 +53601,15 @@ function KU({
           }), isPreviewFieldVisible("MO", "faulty") && m.jsx(ai, {
             label: "Faulty",
             data: readMOPOSField(l, Q, "faulty")
+          }),
+          // ===== Custom POS sections (admin-created, non-system) =====
+          Q && Q.filter(t => (t.team === "MO" || t.team === "Both") && t.active !== !1 && !t.system && t.type === "pos_section").map(t => {
+            const posData = readMOPOSField(l, Q, t.key || t.id);
+            if (posData.total === 0 && posData.smart === 0 && posData.tpos === 0 && posData.mpos === 0) return null;
+            return m.jsx(ai, {
+              label: t.label,
+              data: posData
+            }, t.id);
           })]
         }), isPreviewFieldVisible("MO", "challenges") && l.challenges && m.jsxs("div", {
           className: "bg-amber-50 border border-amber-100 rounded-xl px-4 py-3",
@@ -53524,6 +53619,37 @@ function KU({
           }), m.jsx("p", {
             className: "text-xs text-gray-700 leading-relaxed",
             children: l.challenges
+          })]
+        }),
+        // ===== Custom MO tasks (non-system, non-POS-section) =====
+        Q && Q.filter(t => (t.team === "MO" || t.team === "Both") && t.active !== !1 && !t.system && t.type !== "pos_section").length > 0 &&
+        m.jsxs("div", {
+          className: "bg-gray-50 rounded-xl px-4 py-3",
+          children: [m.jsx("p", {
+            className: "text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2",
+            children: "Additional Fields"
+          }), Q.filter(t => (t.team === "MO" || t.team === "Both") && t.active !== !1 && !t.system && t.type !== "pos_section").map(t => {
+            // Read the custom value: form stores at data.custom[task.id]
+            // Check multiple locations for robustness
+            const val = (l.custom && l.custom[t.id]) || l[t.id] || l[t.key] || (t.key && l[t.key]);
+            if (val === undefined || val === null || val === "") return null;
+            // Skip if val is an object (POS section data accidentally matched)
+            if (typeof val === "object" && !Array.isArray(val)) return null;
+            // Format the value based on task type
+            let displayVal = val;
+            if (t.type === "yesno") displayVal = val === "Yes" ? "✓ Yes" : val === "No" ? "✗ No" : val;
+            else if (t.type === "number") displayVal = parseInt(String(val)) || 0;
+            else if (Array.isArray(val)) displayVal = val.join(", ");
+            return m.jsxs("div", {
+              className: "flex items-center justify-between py-1.5 border-b border-gray-100 last:border-0",
+              children: [m.jsx("span", {
+                className: "text-[11px] font-semibold text-gray-500",
+                children: t.label
+              }), m.jsx("span", {
+                className: "text-xs font-bold text-gray-700",
+                children: displayVal
+              })]
+            }, t.id);
           })]
         })]
       }) : m.jsxs("div", {
@@ -54570,7 +54696,7 @@ function BT({
 function ZU() {
   const {
     user: e
-  } = Qn(), t = no(), [r, n] = E.useState(() => new Date().toISOString().split("T")[0]), [s, o] = E.useState([]), [l, u] = E.useState([]), [d, h] = E.useState([]), [p, g] = E.useState(!0), y = E.useCallback(async () => {
+  } = Qn(), t = no(), [r, n] = E.useState(() => new Date().toISOString().split("T")[0]), [s, o] = E.useState([]), [l, u] = E.useState([]), [d, h] = E.useState([]), [poRpts, setPoRpts] = E.useState([]), [p, g] = E.useState(!0), y = E.useCallback(async () => {
     if (e) {
       g(!0);
       try {
@@ -54589,7 +54715,15 @@ function ZU() {
             canSubmitReports: !1
           },
           U = await Pl(F, r, "MO");
-        h(U)
+        h(U);
+        // Also fetch PO reports for the same date so PO markets show as submitted
+        const poMarketIds = T.markets.filter(mk => mk.team === "PO").map(mk => mk.id);
+        if (poMarketIds.length > 0) {
+          const poReports = await fetchPOReportsByDate(poMarketIds, r);
+          setPoRpts(poReports);
+        } else {
+          setPoRpts([]);
+        }
       } catch (T) {
         console.error("Failed to load MO supervisor dashboard:", T)
       } finally {
@@ -57328,17 +57462,25 @@ function Lz() {
     }), m.jsx("div", {
       className: "space-y-3",
       children: n.map(N => {
-        // For POS sections, use canonical key so preview can find the data
-        const storageKey = N.type === "pos_section" ? (getMOCanonicalKey(N) || N.key || N.id) : (N.key || N.id);
+        // For system POS sections, use canonical key so preview can find the data.
+        // For CUSTOM (non-system) POS sections, use the task's own key/id — NOT canonical,
+        // because getMOCanonicalKey might map it to a system key (e.g. "stock_new"),
+        // causing data collision with the system column.
+        const storageKey = N.system && N.type === "pos_section" ? (getMOCanonicalKey(N) || N.key || N.id) : (N.key || N.id);
         return m.jsx(Fz, {
           task: N,
           value: y[storageKey],
           customValue: y.custom?.[N.id],
           onChange: F => {
-            N.system ? S(storageKey, F) : S("custom", {
-              ...y.custom,
-              [N.id]: F
-            })
+            if (N.system) {
+              S(storageKey, F)
+            } else {
+              // Use functional update to avoid stale closure — y.custom may be outdated
+              b(prev => ({
+                ...prev,
+                custom: { ...(prev.custom || {}), [N.id]: F }
+              }))
+            }
           },
           onPOSChange: (F, U) => C(storageKey, F, U),
           posData: y[storageKey] || {}
@@ -57653,10 +57795,14 @@ function Iz() {
         value: y[N.key || N.id],
         customValue: y.custom?.[N.id],
         onChange: F => {
-          N.system ? S(N.key || N.id, F) : S("custom", {
-            ...y.custom,
-            [N.id]: F
-          })
+          if (N.system) {
+            S(N.key || N.id, F)
+          } else {
+            b(prev => ({
+              ...prev,
+              custom: { ...(prev.custom || {}), [N.id]: F }
+            }))
+          }
         },
         onArrayChange: C
       }, N.id))
@@ -58741,8 +58887,10 @@ function SupervisorPOReports() {
   // Apply filters
   const filtered = reports.filter(r => {
     if (filterPO && r.user?.id !== filterPO) return false;
-    if (fromDate && r.date < fromDate) return false;
-    if (toDate && r.date > toDate) return false;
+    // Normalize date for comparison (handle both DATE and TIMESTAMPTZ)
+    const reportDate = r.date ? (typeof r.date === "string" ? r.date.substring(0, 10) : new Date(r.date).toISOString().substring(0, 10)) : "";
+    if (fromDate && reportDate < fromDate) return false;
+    if (toDate && reportDate > toDate) return false;
     return true;
   });
 
@@ -58751,7 +58899,13 @@ function SupervisorPOReports() {
   const poMarketIds = Array.from(new Set(poUsers.map(u => u.market_id).filter(Boolean)));
   const poMarkets = markets.filter(m => poMarketIds.includes(m.id));
   // Get reports submitted on statusDate
-  const todayReports = reports.filter(r => r.date === statusDate);
+  // Normalize: r.date might be "2026-07-17" (DATE) or "2026-07-17T00:00:00+00:00" (TIMESTAMPTZ)
+  // Compare only the first 10 chars (YYYY-MM-DD)
+  const todayReports = reports.filter(r => {
+    if (!r.date) return false;
+    const reportDate = typeof r.date === "string" ? r.date.substring(0, 10) : new Date(r.date).toISOString().substring(0, 10);
+    return reportDate === statusDate;
+  });
   const submittedMarketIds = new Set(todayReports.map(r => r.market_id).filter(Boolean));
 
   // ===== Excel export =====
@@ -59229,9 +59383,10 @@ function SupervisorMarketsPage() {
       const names = bulkText.split("\n").map(x => x.trim()).filter(Boolean);
       if (names.length === 0) { alert("Paste at least one market name"); return; }
       try {
-        for (const nm of names) {
-          await k5({ name: nm, city: bulkCity.trim() || "", team, region: region || null });
-        }
+        const inserts = names.map(nm => ({ name: nm, city: bulkCity.trim() || "", team, region: region || null }));
+        const { error: bulkErr } = await It.from("markets").insert(inserts);
+        if (bulkErr) throw new Error(bulkErr.message);
+        invalidateMarketsCache();
         ui.success(names.length + " markets added");
         setShowDialog(!1); await load();
       } catch (err) { alert(err.message); }
