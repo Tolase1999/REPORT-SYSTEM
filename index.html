@@ -54735,10 +54735,12 @@ function ZU() {
     y()
   }, [y]);
   const b = s.filter(T => T.team === "MO" || T.team === "PO"),
-    _ = new Set(d.map(T => T.market_id)),
+    // Merge MO reports (d) and PO reports (poRpts) into one submitted set
+    allTodayReports = [...d, ...poRpts],
+    _ = new Set(allTodayReports.map(T => T.market_id)),
     w = Math.max(0, b.length - _.size),
-    S = new Set(d.map(T => T.user_id)),
-    C = new Map(d.map(T => [T.user_id, T.submitted_at || ""])),
+    S = new Set(allTodayReports.map(T => T.user_id)),
+    C = new Map(allTodayReports.map(T => [T.user_id, T.submitted_at || ""])),
     k = [{
       label: "MO Markets",
       value: b.length,
@@ -54826,7 +54828,7 @@ function ZU() {
           className: "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2",
           children: b.map(T => {
             const N = _.has(T.id),
-              F = d.find(U => U.market_id === T.id);
+              F = allTodayReports.find(U => U.market_id === T.id);
             return m.jsxs("div", {
               className: `flex items-center gap-2.5 px-3 py-2.5 rounded-lg border-2 transition-all
                       ${N?"bg-emerald-50 border-emerald-200":"bg-red-50 border-red-100"}`,
