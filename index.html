@@ -27424,7 +27424,7 @@ function Tj({
     g = pl[h],
     y = Ej.filter(w => {
       if (!w.roles.includes(h)) return false;
-      if ((h === "mo_supervisor" || h === "ms_supervisor") && t.supervisorAccess) {
+      if (t.supervisorAccess) {
         const acc = t.supervisorAccess;
         const pathAccessMap = {
           "/mo-supervisor": "dashboard",
@@ -27440,7 +27440,15 @@ function Tj({
           "/ms-supervisor/calendar": "calendar",
           "/ms-supervisor/ranking": "ranking",
           "/ms-supervisor/markets": "markets",
-          "/ms-supervisor/accounts": "accounts"
+          "/ms-supervisor/accounts": "accounts",
+          "/mo/report": "reports",
+          "/mo/history": "reports",
+          "/mo/change-status": "requests",
+          "/ms/report": "reports",
+          "/ms/history": "reports",
+          "/po/report": "po_reports",
+          "/po/history": "po_reports",
+          "/po/change-status": "requests"
         };
         const accessKey = pathAccessMap[w.path];
         if (accessKey && acc[accessKey] === false) return false;
@@ -35401,7 +35409,7 @@ function qD() {
 const YD = ["admin", "manager", "mo_supervisor", "ms_supervisor", "mo", "ms", "po", "inactive"];
 
 function KD() {
-  const [e, t] = E.useState([]), [r, n] = E.useState([]), [s, o] = E.useState(!0), [l, u] = E.useState(!1), [d, h] = E.useState(null), [p, g] = E.useState(""), [y, b] = E.useState(""), [_, w] = E.useState("mo"), [S, C] = E.useState(""), [k, T] = E.useState(""), [N, F] = E.useState(""), [filterRole, setFilterRole] = E.useState("all"), [acctRegion, setAcctRegion] = E.useState(""), U = async () => {
+  const [e, t] = E.useState([]), [r, n] = E.useState([]), [s, o] = E.useState(!0), [l, u] = E.useState(!1), [d, h] = E.useState(null), [p, g] = E.useState(""), [y, b] = E.useState(""), [_, w] = E.useState("mo"), [S, C] = E.useState(""), [k, T] = E.useState(""), [N, F] = E.useState(""), [filterRole, setFilterRole] = E.useState("all"), [filterRegion, setFilterRegion] = E.useState("all"), [acctRegion, setAcctRegion] = E.useState(""), U = async () => {
     o(!0);
     const [fe, pe] = await Promise.all([Ol(), za()]);
     t(fe), n(pe), o(!1)
@@ -35501,6 +35509,14 @@ ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin','manag
           children: pl[fe]
         }, fe)
       })
+    }), m.jsx("div", {
+      className: "flex flex-wrap gap-1.5 mb-1",
+      children: ["all", "NORTHCENTRAL", "NORTHEAST", "NORTHWEST", "LAGOS", "SOUTHSOUTH", "SOUTHEAST", "SOUTHWEST"].map(reg => m.jsx("button", {
+        onClick: () => setFilterRegion(reg),
+        className: `text-[10px] font-bold uppercase px-2.5 py-1.5 rounded-lg border transition-all
+          ${filterRegion === reg ? (reg === "all" ? "bg-gray-700 text-white border-gray-700" : "bg-purple-600 text-white border-purple-600") : (reg === "all" ? "bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100" : "bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100")}`,
+        children: reg === "all" ? "All Regions" : reg
+      }, reg))
     }), m.jsxs("div", {
       className: "flex items-center gap-3 flex-wrap",
       children: [m.jsxs("div", {
@@ -35530,7 +35546,14 @@ ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin','manag
         }, pe))
       }) : m.jsxs("div", {
         className: "divide-y divide-gray-100",
-        children: [e.filter(fe => filterRole === "all" || fe.role === filterRole).map(fe => {
+        children: [e.filter(fe => {
+          if (filterRole !== "all" && fe.role !== filterRole) return false;
+          if (filterRegion !== "all") {
+            const mk = r.find(m => m.id === fe.market_id);
+            if (!mk || mk.region !== filterRegion) return false;
+          }
+          return true;
+        }).map(fe => {
           const pe = Cp[fe.role] ?? {
               bg: "bg-gray-50",
               text: "text-gray-700",
@@ -35578,9 +35601,16 @@ ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin','manag
               })]
             })]
           }, fe.id)
-        }), (filterRole !== "all" ? e.filter(fe => fe.role === filterRole) : e).length === 0 && m.jsx("p", {
+        }), e.filter(fe => {
+          if (filterRole !== "all" && fe.role !== filterRole) return false;
+          if (filterRegion !== "all") {
+            const mk = r.find(m => m.id === fe.market_id);
+            if (!mk || mk.region !== filterRegion) return false;
+          }
+          return true;
+        }).length === 0 && m.jsx("p", {
           className: "text-sm text-gray-400 text-center py-8",
-          children: e.length === 0 ? "No accounts yet" : "No accounts with role: " + (pl[filterRole] || filterRole)
+          children: e.length === 0 ? "No accounts yet" : "No accounts match the selected filters"
         })]
       })
     }), m.jsx(Og, {
@@ -36617,6 +36647,22 @@ async function createChangeOfStatus(submittedBy, sn, reason) {
   return data;
 }
 
+// Batch create multiple change-of-status requests at once.
+// items: [{ sn, reason }, ...]
+async function createChangeOfStatusBatch(submittedBy, items) {
+  const inserts = items.map(item => ({
+    sn: item.sn.trim(),
+    reason: item.reason.trim(),
+    submitted_by: submittedBy,
+    status: "Pending"
+  }));
+  const { data, error } = await It.from("change_of_status_requests")
+    .insert(inserts);
+  if (error) throw new Error(`Failed to create requests: ${error.message}`);
+  return data;
+}
+
+
 // Fetch all change-of-status requests submitted by a specific MO user.
 async function fetchMyChangeOfStatus(userId) {
   const { data, error } = await It.from("change_of_status_requests")
@@ -36634,6 +36680,15 @@ async function fetchAllChangeOfStatus() {
     .order("created_at", { ascending: false });
   if (error) throw new Error(`Failed to fetch requests: ${error.message}`);
   return data || [];
+}
+
+// Delete a change-of-status request (supervisor only)
+async function deleteChangeOfStatus(id) {
+  const { error } = await It.from("change_of_status_requests")
+    .delete()
+    .eq("id", id);
+  if (error) throw new Error(`Failed to delete request: ${error.message}`);
+  return !0;
 }
 
 // Update the status of a change-of-status request (supervisor only).
@@ -37008,7 +37063,7 @@ function formatMOReportText(e, t, tasks) {
     _ = _rNum(r, "visitation"),
     w = r.challenges || "Nil";
   return [
-    "MS Daily Report",
+    "MO Daily Report",
     "Date: " + i,
     "",
     "City: " + a,
@@ -58103,6 +58158,8 @@ function il({
 // ============================================================================
 // Change of Status — MO page (form + read-only "My Request" table)
 // ============================================================================
+const COS_REASONS = ["bad printer", "bad card chip", "bad charging port", "damage part", "faulty button", "not powering on", "software error", "hanging", "screen discoloration", "broken screen", "severe damage(multiple damages)"];
+
 function ChangeOfStatusPage() {
   const { user: e } = Qn();
   const [sn, setSn] = E.useState("");
@@ -58111,6 +58168,9 @@ function ChangeOfStatusPage() {
   const [loading, setLoading] = E.useState(!0);
   const [submitting, setSubmitting] = E.useState(!1);
   const [error, setError] = E.useState("");
+  const [bulkMode, setBulkMode] = E.useState(!1);
+  const [bulkText, setBulkText] = E.useState("");
+  const [bulkRows, setBulkRows] = E.useState([]);
 
   const load = async () => {
     if (!e) return;
@@ -58147,6 +58207,40 @@ function ChangeOfStatusPage() {
     }
   };
 
+  const submitBulk = async (ev) => {
+    ev.preventDefault();
+    setError("");
+    const valid = bulkRows.filter(r => r.sn.trim() && r.reason.trim());
+    if (valid.length === 0) {
+      setError("Add at least one SN with a reason.");
+      return;
+    }
+    setSubmitting(!0);
+    try {
+      await createChangeOfStatusBatch(e.id, valid);
+      ui.success(valid.length + " request(s) submitted successfully");
+      setBulkRows([]);
+      setBulkText("");
+      await load();
+    } catch (err) {
+      setError(err.message || "Failed to submit requests");
+    } finally {
+      setSubmitting(!1);
+    }
+  };
+
+  const parseBulkText = () => {
+    const lines = bulkText.split("\n").map(l => l.trim()).filter(Boolean);
+    const rows = lines.map(l => ({ sn: l, reason: "" }));
+    setBulkRows(rows);
+    if (rows.length === 0) setError("No SNs found in the pasted text.");
+    else setError("");
+  };
+
+  const updateBulkRow = (idx, field, val) => {
+    setBulkRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: val } : r));
+  };
+
   const statusBadge = (s) => {
     const styles = {
       Pending: "bg-amber-100 text-amber-700 border-amber-200",
@@ -58168,13 +58262,32 @@ function ChangeOfStatusPage() {
       })]
     }),
 
-    // ===== Submission form =====
+    // ===== Submission form with Single/Bulk toggle =====
     m.jsxs(Je, {
       className: "p-5",
-      children: [m.jsxs("h3", {
-        className: "text-sm font-bold text-gray-800 mb-4 flex items-center gap-2",
-        children: [m.jsx(cg, { className: "text-emerald-500", size: 16 }), "New Request"]
-      }), m.jsxs("form", {
+      children: [m.jsxs("div", {
+        className: "flex items-center justify-between mb-4",
+        children: [m.jsxs("h3", {
+          className: "text-sm font-bold text-gray-800 flex items-center gap-2",
+          children: [m.jsx(cg, { className: "text-emerald-500", size: 16 }), "New Request"]
+        }), m.jsxs("div", {
+          className: "flex gap-1 bg-gray-100 p-0.5 rounded-lg",
+          children: [m.jsx("button", {
+            type: "button",
+            onClick: () => setBulkMode(!1),
+            className: `px-3 py-1 text-xs font-bold rounded-md transition-all ${!bulkMode ? "bg-white text-emerald-700 shadow-sm" : "text-gray-400"}`,
+            children: "Single"
+          }), m.jsx("button", {
+            type: "button",
+            onClick: () => setBulkMode(!0),
+            className: `px-3 py-1 text-xs font-bold rounded-md transition-all ${bulkMode ? "bg-white text-emerald-700 shadow-sm" : "text-gray-400"}`,
+            children: "Bulk Paste"
+          })]
+        })]
+      }),
+
+      // Single mode form
+      !bulkMode && m.jsxs("form", {
         onSubmit: submit,
         className: "space-y-4",
         children: [m.jsxs("div", {
@@ -58193,11 +58306,16 @@ function ChangeOfStatusPage() {
             children: [m.jsx(Qe, {
               className: "text-xs font-semibold text-gray-500 uppercase tracking-wider",
               children: "Reason"
-            }), m.jsx(yt, {
-              value: reason,
-              onChange: t => setReason(t.target.value),
-              placeholder: "e.g. Terminal swapped, Device faulty...",
-              className: "mt-1"
+            }), m.jsxs(qn, {
+              value: reason || "none",
+              onValueChange: t => setReason(t === "none" ? "" : t),
+              children: [m.jsx(Kn, {
+                className: "mt-1",
+                children: m.jsx(Yn, { placeholder: "Select reason..." })
+              }), m.jsxs(Xn, {
+                children: [m.jsx(ft, { value: "none", children: "— Select Reason —" }),
+                  COS_REASONS.map(r => m.jsx(ft, { value: r, children: r }, r))]
+              })]
             })]
           })]
         }), error && m.jsx("div", {
@@ -58209,6 +58327,86 @@ function ChangeOfStatusPage() {
           className: "bg-emerald-600 hover:bg-emerald-700 text-white",
           children: [m.jsx(ug, { size: 14, className: "mr-1" }), submitting ? "Submitting..." : "Submit Request"]
         })]
+      }),
+
+      // Bulk mode form
+      bulkMode && m.jsxs("form", {
+        onSubmit: submitBulk,
+        className: "space-y-3",
+        children: [
+          // Step 1: Paste SNs as plain text
+          bulkRows.length === 0 && m.jsxs("div", {
+            children: [m.jsx("p", {
+              className: "text-[10px] text-gray-400 mb-2",
+              children: "Paste SNs below (one per line), then click Parse to add reasons."
+            }), m.jsx("textarea", {
+              value: bulkText,
+              onChange: t => setBulkText(t.target.value),
+              placeholder: "SN-001234\nSN-001235\nSN-001236",
+              className: "w-full min-h-[120px] px-3 py-2 text-sm border border-gray-200 rounded-lg resize-y font-mono"
+            }), m.jsx(ht, {
+              type: "button",
+              size: "sm",
+              onClick: parseBulkText,
+              className: "mt-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs",
+              children: "Parse SNs"
+            })]
+          }),
+          // Step 2: Parsed rows with reason dropdowns
+          bulkRows.length > 0 && [
+            m.jsxs("div", {
+              className: "flex items-center justify-between mb-2",
+              children: [m.jsxs("p", {
+                className: "text-[10px] text-gray-400",
+                children: [bulkRows.length, " SN(s) parsed — select a reason for each:"]
+              }), m.jsx("button", {
+                type: "button",
+                onClick: () => { setBulkRows([]); setBulkText(""); },
+                className: "text-[10px] text-gray-400 hover:text-red-500 font-bold",
+                children: "← Back to paste"
+              })]
+            }),
+            m.jsx("div", {
+              className: "space-y-2 max-h-[300px] overflow-y-auto",
+              children: bulkRows.map((row, idx) => m.jsxs("div", {
+                className: "flex items-center gap-2 p-2 bg-gray-50 rounded-lg",
+                children: [m.jsx("span", {
+                  className: "text-[10px] font-bold text-gray-400 w-6 shrink-0",
+                  children: (idx + 1) + "."
+                }), m.jsx("span", {
+                  className: "text-xs font-mono font-bold text-gray-700 flex-1 truncate",
+                  children: row.sn
+                }), m.jsxs(qn, {
+                  value: row.reason || "none",
+                  onValueChange: t => updateBulkRow(idx, "reason", t === "none" ? "" : t),
+                  children: [m.jsx(Kn, {
+                    className: "h-8 w-40 text-xs",
+                    children: m.jsx(Yn, { placeholder: "Reason..." })
+                  }), m.jsxs(Xn, {
+                    children: [m.jsx(ft, { value: "none", children: "— Select —" }),
+                      COS_REASONS.map(r => m.jsx(ft, { value: r, children: r }, r))]
+                  })]
+                })]
+              }, idx))
+            }),
+            error && m.jsx("div", {
+              className: "bg-red-50 border border-red-200 rounded-lg p-3",
+              children: m.jsx("p", { className: "text-xs text-red-600 font-medium", children: error })
+            }),
+            m.jsxs("div", {
+              className: "flex items-center gap-3",
+              children: [m.jsxs("span", {
+                className: "text-[10px] text-gray-400",
+                children: [bulkRows.filter(r => r.sn.trim() && r.reason.trim()).length, " valid request(s)"]
+              }), m.jsxs(ht, {
+                type: "submit",
+                disabled: submitting,
+                className: "bg-emerald-600 hover:bg-emerald-700 text-white",
+                children: [m.jsx(ug, { size: 14, className: "mr-1" }), submitting ? "Submitting..." : "Submit All"]
+              })]
+            })
+          ]
+        ]
       })]
     }),
 
@@ -58410,18 +58608,28 @@ function SupervisorRequestTable() {
           }), m.jsx("tbody", {
             children: filtered.map(r => m.jsxs("tr", {
               className: "border-b border-gray-100 hover:bg-gray-50",
-              children: [m.jsx("td", { className: "py-2.5 px-3 font-mono text-xs text-gray-700", children: r.sn }), m.jsx("td", { className: "py-2.5 px-3 text-gray-700", children: r.reason }), m.jsx("td", { className: "py-2.5 px-3 text-gray-700", children: r.user?.name || "Unknown" }), m.jsx("td", { className: "py-2.5 px-3", children: m.jsx("span", { className: `text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${statusBadge(r.status)}`, children: r.status }) }), m.jsx("td", { className: "py-2.5 px-3 text-[11px] text-gray-400", children: new Date(r.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) }), m.jsx("td", { className: "py-2.5 px-3", children: m.jsxs("div", { className: "flex items-center gap-1", children: [["Pending", "Applied", "Done"].map(s => m.jsx("button", {
-                onClick: () => r.status !== s && handleStatusChange(r.id, s),
-                disabled: r.status === s || updating[r.id],
-                className: `text-[10px] font-bold uppercase px-2 py-1 rounded border transition-colors
-                  ${r.status === s
-                    ? (s === "Pending" ? "bg-amber-100 text-amber-700 border-amber-300" : s === "Applied" ? "bg-blue-100 text-blue-700 border-blue-300" : "bg-emerald-100 text-emerald-700 border-emerald-300")
-                    : "bg-white text-gray-400 border-gray-200 hover:bg-gray-50"
-                  }
-                  ${updating[r.id] ? "opacity-50 cursor-wait" : ""}`,
-                children: s
-              }, s))] }) })]
-            }, r.id))
+              children: [m.jsx("td", { className: "py-2.5 px-3 font-mono text-xs text-gray-700", children: r.sn }), m.jsx("td", { className: "py-2.5 px-3 text-gray-700", children: r.reason }), m.jsx("td", { className: "py-2.5 px-3 text-gray-700", children: r.user?.name || "Unknown" }), m.jsx("td", { className: "py-2.5 px-3", children: m.jsx("span", { className: `text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${statusBadge(r.status)}`, children: r.status }) }), m.jsx("td", { className: "py-2.5 px-3 text-[11px] text-gray-400", children: new Date(r.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) }), m.jsx("td", { className: "py-2.5 px-3", children: m.jsxs("div", { className: "flex items-center gap-1", children: [
+                  ["Pending", "Applied", "Done"].map(s => m.jsx("button", {
+                    onClick: () => r.status !== s && handleStatusChange(r.id, s),
+                    disabled: r.status === s || updating[r.id],
+                    className: `text-[10px] font-bold uppercase px-2 py-1 rounded border transition-colors ${r.status === s ? (s === "Pending" ? "bg-amber-100 text-amber-700 border-amber-300" : s === "Applied" ? "bg-blue-100 text-blue-700 border-blue-300" : "bg-emerald-100 text-emerald-700 border-emerald-300") : "bg-white text-gray-400 border-gray-200 hover:bg-gray-50"} ${updating[r.id] ? "opacity-50 cursor-wait" : ""}`,
+                    children: s
+                  }, s)),
+                  m.jsx("button", {
+                    onClick: () => {
+                      if (confirm("Delete this request? This cannot be undone.")) {
+                        deleteChangeOfStatus(r.id).then(() => {
+                          ui.success("Request deleted");
+                          setRequests(prev => prev.filter(x => x.id !== r.id));
+                        }).catch(err => ui.error(err.message || "Failed to delete"));
+                      }
+                    },
+                    className: "text-gray-400 hover:text-red-500 transition-colors p-1 ml-1",
+                    title: "Delete request",
+                    children: m.jsx(dg, { size: 14 })
+                  })
+                ] })
+              })] }, r.id))
           })]
         })
       })]
@@ -58532,6 +58740,17 @@ function POReportPage() {
         }
         await createPOReport(e.id, e.market_id, today, submitTime, dataWithMeta);
         ui.success("PO report submitted successfully");
+        // Auto-copy the report summary to clipboard
+        try {
+          const _poText = formatPOReportText({
+            date: today, submitted_at: submitTime, user: e, market_id: e.market_id,
+            data: dataWithMeta
+          }, null);
+          copyReportToClipboard(_poText).then(_ok => {
+            _ok ? ui.success("Report copied to clipboard — paste in your group") :
+              ui.info("Report submitted. Tap the copy button to share.")
+          });
+        } catch(_copyErr) {}
       }
       setFormData({});
       setEditMode(!1);
@@ -58578,6 +58797,23 @@ function POReportPage() {
             className: "bg-emerald-600 hover:bg-emerald-700 text-white",
             size: "sm",
             children: [m.jsx(cg, { size: 14, className: "mr-1" }), "Edit Report"]
+          }),
+          m.jsxs(ht, {
+            onClick: () => {
+              const _text = formatPOReportText(existingReport, existingReport.market);
+              copyReportToClipboard(_text).then(_ok => {
+                if (_ok) {
+                  ui.success("Report copied to clipboard — paste in your group")
+                } else {
+                  try { window.prompt("Copy failed — long-press the text below, then Copy:", _text) }
+                  catch (e2) { ui.error("Copy failed — please try again") }
+                }
+              });
+            },
+            variant: "outline",
+            className: "border-emerald-300 text-emerald-700 hover:bg-emerald-50",
+            size: "sm",
+            children: [m.jsx(cp2, { size: 14, className: "mr-1" }), "Copy Report"]
           })
         ]
       }), m.jsx("div", {
@@ -60035,6 +60271,44 @@ function AccessControlPage() {
       })
     })]
   });
+}
+
+
+
+// Format PO report as text for clipboard copy
+function formatPOReportText(report, market) {
+  const r = report.data || {};
+  const mk = market || report.market || {};
+  const poName = r.poName || report.user?.name || "";
+  const poCode = r.poCode || report.user?.code || "";
+  const date = report.date || "";
+  const city = mk.city || r.city || "";
+  const office = mk.name || r.market || "";
+
+  function posLine(label, key) {
+    const v = r[key] || { smart: 0, tpos: 0, mpos: 0, total: 0 };
+    return label + ": Smart=" + (v.smart||0) + " TPOS=" + (v.tpos||0) + " MPOS=" + (v.mpos||0) + " Total=" + (v.total||0);
+  }
+
+  return [
+    "PO Daily Report",
+    "Date: " + date,
+    "PO Code: " + poCode,
+    "PO Name: " + poName,
+    "City: " + city,
+    "Office: " + office,
+    "Designation: POS Officer",
+    "",
+    posLine("Brand New Stock", "brand_new_stock"),
+    posLine("Repaired Stock", "repaired_stock"),
+    posLine("R&R Stock", "rr_stock"),
+    posLine("Total Faulty", "total_faulty"),
+    "",
+    "TN Stickers: " + (r.tn_stickers || 0),
+    "3 Fold Flyers: " + (r.three_fold_flyers || 0),
+    "",
+    "Submitted at: " + (report.submitted_at || "")
+  ].join("\n");
 }
 
 function Vz() {
