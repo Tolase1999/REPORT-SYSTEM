@@ -25809,6 +25809,7 @@ const DO = "https://lbjlbjgvjhuquluvdxau.supabase.co",
   pl = {
     admin: "Admin",
     manager: "Manager",
+    mo_po_manager: "MO/PO Manager",
     mo_supervisor: "MO Supervisor",
     ms_supervisor: "MS Supervisor",
     mo: "Market Officer",
@@ -25826,6 +25827,11 @@ const DO = "https://lbjlbjgvjhuquluvdxau.supabase.co",
       bg: "bg-purple-50",
       text: "text-purple-800",
       border: "border-purple-200"
+    },
+    mo_po_manager: {
+      bg: "bg-teal-50",
+      text: "text-teal-800",
+      border: "border-teal-200"
     },
     mo_supervisor: {
       bg: "bg-blue-50",
@@ -25879,27 +25885,27 @@ function IO(e) {
 }
 
 function PO(e) {
-  return e === "admin" || e === "manager"
+  return e === "admin" || e === "manager" || e === "mo_po_manager"
 }
 
 function Q_(e) {
-  return e === "admin" || e === "manager" || e === "mo_supervisor" || e === "mo"
+  return e === "admin" || e === "manager" || e === "mo_po_manager" || e === "mo_supervisor" || e === "mo"
 }
 
 function Z_(e) {
-  return e === "admin" || e === "manager" || e === "ms_supervisor" || e === "ms"
+  return e === "admin" || e === "manager" || e === "mo_po_manager" || e === "ms_supervisor" || e === "ms"
 }
 
 function BO(e) {
-  return e === "admin" || e === "manager"
+  return e === "admin" || e === "manager" || e === "mo_po_manager"
 }
 
 function UO(e) {
-  return e === "admin" || e === "manager"
+  return e === "admin" || e === "manager" || e === "mo_po_manager"
 }
 
 function zO(e) {
-  return e === "admin" || e === "mo_supervisor" || e === "ms_supervisor" || e === "manager"
+  return e === "admin" || e === "mo_po_manager" || e === "mo_supervisor" || e === "ms_supervisor" || e === "manager"
 }
 
 function HO(e) {
@@ -25942,6 +25948,8 @@ function t2(e) {
       return "/admin";
     case "manager":
       return "/manager";
+    case "mo_po_manager":
+      return "/mo-po-manager";
     case "mo_supervisor":
       return "/mo-supervisor";
     case "ms_supervisor":
@@ -27403,6 +27411,26 @@ const _j = [
     icon: "RefreshCw",
     path: "/po/change-status",
     roles: ["po"]
+  }, {
+    label: "Dashboard",
+    icon: "LayoutDashboard",
+    path: "/mo-po-manager",
+    roles: ["mo_po_manager"]
+  }, {
+    label: "MO Reports",
+    icon: "Database",
+    path: "/mo-po-manager/reports",
+    roles: ["mo_po_manager"]
+  }, {
+    label: "PO Reports",
+    icon: "FileText",
+    path: "/mo-po-manager/po-reports",
+    roles: ["mo_po_manager"]
+  }, {
+    label: "Request Table",
+    icon: "RefreshCw",
+    path: "/mo-po-manager/requests",
+    roles: ["mo_po_manager"]
   }];
 
 function Tj({
@@ -35406,7 +35434,7 @@ function qD() {
     })]
   })
 }
-const YD = ["admin", "manager", "mo_supervisor", "ms_supervisor", "mo", "ms", "po", "inactive"];
+const YD = ["admin", "manager", "mo_po_manager", "mo_supervisor", "ms_supervisor", "mo", "ms", "po", "inactive"];
 
 function KD() {
   const [e, t] = E.useState([]), [r, n] = E.useState([]), [s, o] = E.useState(!0), [l, u] = E.useState(!1), [d, h] = E.useState(null), [p, g] = E.useState(""), [y, b] = E.useState(""), [_, w] = E.useState("mo"), [S, C] = E.useState(""), [k, T] = E.useState(""), [N, F] = E.useState(""), [filterRole, setFilterRole] = E.useState("all"), [filterRegion, setFilterRegion] = E.useState("all"), [acctRegion, setAcctRegion] = E.useState(""), U = async () => {
@@ -35462,7 +35490,7 @@ function KD() {
 UPDATE users SET role = 'ms_supervisor' WHERE role = 'supervisor';
 UPDATE users SET role = 'mo' WHERE role NOT IN ('admin','manager','mo_supervisor','ms_supervisor','mo','ms','inactive');
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
-ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin','manager','mo_supervisor','ms_supervisor','mo','ms','po','inactive'));`) : ee(pe)
+ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin','manager','mo_po_manager','mo_supervisor','ms_supervisor','mo','ms','po','inactive'));`) : ee(pe)
         }
       }
     }, he = async fe => {
@@ -35525,7 +35553,7 @@ ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin','manag
           value: filterRole,
           onValueChange: fe => setFilterRole(fe),
           children: [m.jsx(Kn, { className: "w-44 h-8 text-xs", children: m.jsx(Yn, { placeholder: "All Roles" }) }), m.jsxs(Xn, {
-            children: [m.jsx(ft, { value: "all", children: "All Roles" }), m.jsx(ft, { value: "admin", children: "Admin" }), m.jsx(ft, { value: "manager", children: "Manager" }), m.jsx(ft, { value: "mo_supervisor", children: "MO Supervisor" }), m.jsx(ft, { value: "ms_supervisor", children: "MS Supervisor" }), m.jsx(ft, { value: "mo", children: "Market Officer (MO)" }), m.jsx(ft, { value: "ms", children: "Merchant Support (MS)" }), m.jsx(ft, { value: "po", children: "POS Officer (PO)" }), m.jsx(ft, { value: "inactive", children: "Inactive" })]
+            children: [m.jsx(ft, { value: "all", children: "All Roles" }), m.jsx(ft, { value: "admin", children: "Admin" }), m.jsx(ft, { value: "manager", children: "Manager" }), m.jsx(ft, { value: "mo_po_manager", children: "MO/PO Manager" }), m.jsx(ft, { value: "mo_supervisor", children: "MO Supervisor" }), m.jsx(ft, { value: "ms_supervisor", children: "MS Supervisor" }), m.jsx(ft, { value: "mo", children: "Market Officer (MO)" }), m.jsx(ft, { value: "ms", children: "Merchant Support (MS)" }), m.jsx(ft, { value: "po", children: "POS Officer (PO)" }), m.jsx(ft, { value: "inactive", children: "Inactive" })]
           })]
         })]
       }), (filterRole !== "all") && m.jsx(ht, {
@@ -35652,6 +35680,9 @@ ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin','manag
                 }), m.jsx(ft, {
                   value: "manager",
                   children: "Manager"
+                }), m.jsx(ft, {
+                  value: "mo_po_manager",
+                  children: "MO/PO Manager"
                 }), m.jsx(ft, {
                   value: "mo_supervisor",
                   children: "MO Supervisor"
@@ -35787,7 +35818,13 @@ ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin','manag
 }
 async function rE(e) {
   let t = It.from("tasks").select("*").order("order");
-  e && (t = t.or(`team.eq.${e},team.eq.Both`));
+  if (e) {
+    // Fetch tasks matching the team, plus "Both" (MO+MS) and "MO_PO" combinations
+    const teams = [`team.eq.${e}`, "team.eq.Both"];
+    if (e === "MO") teams.push("team.eq.MO_PO");
+    if (e === "PO") teams.push("team.eq.MO_PO");
+    t = t.or(teams.join(","));
+  }
   const {
     data: r,
     error: n
@@ -36015,8 +36052,14 @@ function eL() {
                   value: "MS",
                   children: "MS Only"
                 }), m.jsx(ft, {
+                  value: "PO",
+                  children: "PO Only"
+                }), m.jsx(ft, {
                   value: "Both",
-                  children: "Both"
+                  children: "Both (MO + MS)"
+                }), m.jsx(ft, {
+                  value: "MO_PO",
+                  children: "MO + PO"
                 })]
               })]
             })]
@@ -36327,7 +36370,7 @@ function ptmComponent() {
   const msSystemCols = MS_SYSTEM_COLUMNS;
   const msCustomTasks = tasks.filter(t => (t.team === "MS" || t.team === "Both") && t.active !== !1 && !t.system);
   const moSystemCols = MO_SYSTEM_COLUMNS;
-  const moCustomTasks = tasks.filter(t => (t.team === "MO" || t.team === "Both") && t.active !== !1 && !t.system);
+  const moCustomTasks = tasks.filter(t => (t.team === "MO" || t.team === "Both" || t.team === "MO_PO") && t.active !== !1 && !t.system);
 
   const renderToggle = (team, key, label, desc) => {
     const checked = cfg[team][key] !== !1;
@@ -36581,7 +36624,11 @@ async function rL(e, t) {
   return o
 }
 async function Pl(e, t, r) {
-  let n = It.from("reports").select("*, user:user_id(id, name, code), market:market_id(*)").eq("date", t);
+  // Use gte/lt date range to handle both DATE and TIMESTAMPTZ columns
+  const nextDay = new Date(t + "T12:00:00");
+  nextDay.setDate(nextDay.getDate() + 1);
+  const nextDayStr = nextDay.toISOString().split("T")[0];
+  let n = It.from("reports").select("*, user:user_id(id, name, code), market:market_id(*)").gte("date", t).lt("date", nextDayStr);
   r && (n = n.eq("type", r));
   const {
     data: s,
@@ -37518,7 +37565,7 @@ function getVisibleMOColumns(tasks) {
   });
   // Custom MO tasks (filtered by visibility)
   if (tasks && Array.isArray(tasks)) {
-    tasks.filter(t => (t.team === "MO" || t.team === "Both") && t.active !== !1 && !t.system)
+    tasks.filter(t => (t.team === "MO" || t.team === "Both" || t.team === "MO_PO") && t.active !== !1 && !t.system)
       .forEach(t => {
         if (isPreviewTaskVisible("MO", t.id)) {
           if (t.type === "pos_section") {
@@ -53054,7 +53101,7 @@ function Eh({
   const {
     user: t,
     accessScope: r
-  } = Qn(), n = t?.role, [s, o] = E.useState([]), [l, u] = E.useState([]), [d, h] = E.useState([]), [p, g] = E.useState([]), [y, b] = E.useState(!1), [_, w] = E.useState(!1), [S, C] = E.useState(null), [k, T] = E.useState(() => new Date().toISOString().split("T")[0]), [N, F] = E.useState(() => new Date().toISOString().split("T")[0]), [U, R] = E.useState(e || ""), [L, P] = E.useState(""), [J, ee] = E.useState(""), [te, he] = E.useState("");
+  } = Qn(), n = t?.role, [s, o] = E.useState([]), [l, u] = E.useState([]), [d, h] = E.useState([]), [p, g] = E.useState([]), [y, b] = E.useState(!1), [_, w] = E.useState(!1), [S, C] = E.useState(null), [k, T] = E.useState(() => new Date().toISOString().split("T")[0]), [N, F] = E.useState(() => new Date().toISOString().split("T")[0]), [U, R] = E.useState(e || ""), [L, P] = E.useState(""), [J, ee] = E.useState(""), [te, he] = E.useState(""), [filterReg, setFilterReg] = E.useState("all");
   E.useEffect(() => {
     za().then(u), Ol().then(h), ph().then(g)
   }, []);
@@ -53089,7 +53136,7 @@ function Eh({
       T(D), F(D), R(e || ""), P(""), ee(""), he("")
     },
     Y = D => {
-      const z = s;
+      const z = regionFilteredReports;
       if (!z.length) return;
       const H = Ma.book_new();
       H.Props = {
@@ -53115,7 +53162,7 @@ function Eh({
       }], Ma.book_append_sheet(H, Q, "Summary");
       const oe = z.filter(ye => ye.type === "MO");
       if (oe.length) {
-        const ye = p.filter(st => (st.team === "MO" || st.team === "Both") && st.active !== !1),
+        const ye = p.filter(st => (st.team === "MO" || st.team === "Both" || st.team === "MO_PO") && st.active !== !1),
           // Build dynamic MO column list from preview task config
           moColsAll = getVisibleMOColumns(p),
           moPosColsEx = moColsAll.filter(c => c.isPosSection),
@@ -53157,14 +53204,23 @@ function Eh({
       const ve = `Reports_All_${new Date().toISOString().split("T")[0]}.xlsx`;
       MU(H, ve)
     },
+    // Region filter: filter reports by selected region (must be before re/me/Ce which use it)
+    regionFilteredReports = E.useMemo(() => {
+      if (filterReg === "all") return s;
+      const marketRegionMap = new Map(l.map(mk => [mk.id, mk.region || ""]));
+      return s.filter(rpt => {
+        const reg = marketRegionMap.get(rpt.market_id) || "";
+        return reg === filterReg;
+      });
+    }, [s, l, filterReg]),
     re = E.useMemo(() => {
       const D = {};
-      return s.forEach(z => {
+      return regionFilteredReports.forEach(z => {
         D[z.date] || (D[z.date] = []), D[z.date].push(z)
       }), Object.entries(D).sort((z, H) => H[0].localeCompare(z[0]))
-    }, [s]),
-    me = s.filter(D => D.type === "MO").length,
-    Ce = s.filter(D => D.type === "MS").length,
+    }, [regionFilteredReports]),
+    me = regionFilteredReports.filter(D => D.type === "MO").length,
+    Ce = regionFilteredReports.filter(D => D.type === "MS").length,
     we = Q_(n) && !e,
     q = Z_(n) && !e,
     M = d.filter(D => (D.role === "mo" || D.role === "ms") && D.role !== "inactive"),
@@ -53173,26 +53229,37 @@ function Eh({
     // Supervisors/managers see only their assigned markets/staff; everyone
     // sees only markets/staff that have at least one visible report.
     visibleMarkets = E.useMemo(() => {
-      const inReports = new Set(s.map(D => D.market_id));
+      const inReports = new Set(regionFilteredReports.map(D => D.market_id));
       let res = l.filter(D => inReports.has(D.id));
       if (r?.allowedMarketIds?.length > 0) {
         const allowed = new Set(r.allowedMarketIds);
         res = res.filter(D => allowed.has(D.id))
       }
       return res
-    }, [l, s, r]),
+    }, [l, regionFilteredReports, r]),
     visibleStaff = E.useMemo(() => {
-      const inReports = new Set(s.map(D => D.user_id));
+      const inReports = new Set(regionFilteredReports.map(D => D.user_id));
       let res = M.filter(D => inReports.has(D.id));
       if (r?.allowedUserIds?.length > 0) {
         const allowed = new Set(r.allowedUserIds);
         res = res.filter(D => allowed.has(D.id))
       }
       return res
-    }, [M, s, r]);
+    }, [M, regionFilteredReports, r]);
   return m.jsxs("div", {
     className: "space-y-4",
-    children: [m.jsxs(Je, {
+    children: [
+    // Region filter chips
+    m.jsx("div", {
+      className: "flex flex-wrap gap-1.5",
+      children: ["all", "NORTHCENTRAL", "NORTHEAST", "NORTHWEST", "LAGOS", "SOUTHSOUTH", "SOUTHEAST", "SOUTHWEST"].map(reg => m.jsx("button", {
+        onClick: () => setFilterReg(reg),
+        className: `text-[10px] font-bold uppercase px-2.5 py-1.5 rounded-lg border transition-all
+          ${filterReg === reg ? (reg === "all" ? "bg-gray-700 text-white border-gray-700" : "bg-purple-600 text-white border-purple-600") : (reg === "all" ? "bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100" : "bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100")}`,
+        children: reg === "all" ? "All Regions" : reg
+      }, reg))
+    }),
+    m.jsxs(Je, {
       className: "p-4",
       children: [m.jsxs("div", {
         className: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3",
@@ -53340,7 +53407,7 @@ function Eh({
         className: "p-2 text-center border-l-4 border-gray-300",
         children: [m.jsx("div", {
           className: "text-lg font-extrabold text-gray-700",
-          children: s.length
+          children: regionFilteredReports.length
         }), m.jsx("div", {
           className: "text-[10px] font-semibold text-gray-400 uppercase",
           children: "Total Reports"
@@ -53367,7 +53434,7 @@ function Eh({
         className: "p-3 text-center border-l-4 border-purple-400",
         children: [m.jsx("div", {
           className: "text-2xl font-extrabold text-purple-600",
-          children: new Set(s.map(D => D.date)).size
+          children: new Set(regionFilteredReports.map(D => D.date)).size
         }), m.jsx("div", {
           className: "text-[10px] font-semibold text-gray-400 uppercase",
           children: "Days Covered"
@@ -53376,7 +53443,7 @@ function Eh({
         className: "p-3 text-center border-l-4 border-amber-400",
         children: [m.jsx("div", {
           className: "text-2xl font-extrabold text-amber-600",
-          children: new Set(s.map(D => D.market_id)).size
+          children: new Set(regionFilteredReports.map(D => D.market_id)).size
         }), m.jsx("div", {
           className: "text-[10px] font-semibold text-gray-400 uppercase",
           children: "Markets"
@@ -53389,7 +53456,7 @@ function Eh({
       }).map((D, z) => m.jsx(Zn, {
         className: "h-16 rounded-xl"
       }, z))
-    }) : s.length === 0 ? m.jsxs(Je, {
+    }) : regionFilteredReports.length === 0 ? m.jsxs(Je, {
       className: "p-12 text-center",
       children: [m.jsx(D3, {
         size: 36,
@@ -53441,7 +53508,7 @@ function Eh({
         })]
       }, D))
     }), _ && m.jsx(XU, {
-      reports: s,
+      reports: regionFilteredReports,
       markets: l,
       users: d,
       tasks: p,
@@ -53658,7 +53725,7 @@ function KU({
             data: readMOPOSField(l, Q, "faulty")
           }),
           // ===== Custom POS sections (admin-created, non-system) =====
-          Q && Q.filter(t => (t.team === "MO" || t.team === "Both") && t.active !== !1 && !t.system && t.type === "pos_section").map(t => {
+          Q && Q.filter(t => (t.team === "MO" || t.team === "Both" || t.team === "MO_PO") && t.active !== !1 && !t.system && t.type === "pos_section").map(t => {
             const posData = readMOPOSField(l, Q, t.key || t.id);
             if (posData.total === 0 && posData.smart === 0 && posData.tpos === 0 && posData.mpos === 0) return null;
             return m.jsx(ai, {
@@ -53677,13 +53744,13 @@ function KU({
           })]
         }),
         // ===== Custom MO tasks (non-system, non-POS-section) =====
-        Q && Q.filter(t => (t.team === "MO" || t.team === "Both") && t.active !== !1 && !t.system && t.type !== "pos_section").length > 0 &&
+        Q && Q.filter(t => (t.team === "MO" || t.team === "Both" || t.team === "MO_PO") && t.active !== !1 && !t.system && t.type !== "pos_section").length > 0 &&
         m.jsxs("div", {
           className: "bg-gray-50 rounded-xl px-4 py-3",
           children: [m.jsx("p", {
             className: "text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2",
             children: "Additional Fields"
-          }), Q.filter(t => (t.team === "MO" || t.team === "Both") && t.active !== !1 && !t.system && t.type !== "pos_section").map(t => {
+          }), Q.filter(t => (t.team === "MO" || t.team === "Both" || t.team === "MO_PO") && t.active !== !1 && !t.system && t.type !== "pos_section").map(t => {
             // Read the custom value: form stores at data.custom[task.id]
             // Check multiple locations for robustness
             const val = (l.custom && l.custom[t.id]) || l[t.id] || l[t.key] || (t.key && l[t.key]);
@@ -53861,7 +53928,7 @@ function XU({
   onClose: s,
   onExcel: o
 }) {
-  const [l, u] = E.useState("summary"), d = e.filter(_ => _.type === "MO"), h = e.filter(_ => _.type === "MS"), p = [...new Set(e.map(_ => _.date))].sort(), g = n.filter(_ => (_.team === "MO" || _.team === "Both") && _.active !== !1),
+  const [l, u] = E.useState("summary"), d = e.filter(_ => _.type === "MO"), h = e.filter(_ => _.type === "MS"), p = [...new Set(e.map(_ => _.date))].sort(), g = n.filter(_ => (_.team === "MO" || _.team === "Both" || _.team === "MO_PO") && _.active !== !1),
     // Build dynamic MO column list from preview task config
     moCols = getVisibleMOColumns(n),
     // Separate POS-section columns from custom single-column tasks
@@ -58448,23 +58515,23 @@ function ChangeOfStatusPage() {
 // ============================================================================
 function SupervisorRequestTable() {
   const { user: e, assignedMarkets } = Qn();
+  const isManager = e?.role === "mo_po_manager";
   const [requests, setRequests] = E.useState([]);
   const [loading, setLoading] = E.useState(!0);
   const [updating, setUpdating] = E.useState({});
   const [filterStatus, setFilterStatus] = E.useState("all");
   const [copying, setCopying] = E.useState(!1);
 
-  // The supervisor's assigned market IDs — requests are scoped to these markets
+  // The supervisor's assigned market IDs — requests are scoped to these markets.
+  // Managers see ALL requests (no market filtering).
   const myMarketIds = E.useMemo(() => new Set((assignedMarkets || []).map(mk => mk.id)), [assignedMarkets]);
 
   const load = async () => {
     setLoading(!0);
     try {
       const all = await fetchAllChangeOfStatus();
-      // Filter to only requests from MO/PO users whose market is in this supervisor's assigned markets.
-      // The user object is joined on the request; check its market_id.
-      // Requests from users without a market_id are excluded (supervisors shouldn't see them).
-      const scoped = myMarketIds.size === 0
+      // Managers see all requests; supervisors only see requests from their assigned markets
+      const scoped = (isManager || myMarketIds.size === 0)
         ? all
         : all.filter(r => r.user?.market_id && myMarketIds.has(r.user.market_id));
       setRequests(scoped);
@@ -58665,8 +58732,16 @@ function POReportPage() {
   const [existingReport, setExistingReport] = E.useState(null);
   const [editMode, setEditMode] = E.useState(!1);
   const [checking, setChecking] = E.useState(!0);
+  const [poTasks, setPoTasks] = E.useState([]);
   const today = new Date().toISOString().split("T")[0];
   const todayDisplay = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+
+  // Fetch PO tasks (custom fields created by admin)
+  E.useEffect(() => {
+    rE("PO").then(tasks => {
+      setPoTasks(tasks.filter(t => t.active !== false && !t.system));
+    }).catch(() => {});
+  }, []);
 
   // Check if a report already exists for this PO's market today
   const checkExisting = async () => {
@@ -58695,6 +58770,11 @@ function POReportPage() {
 
   const updateNumberField = (fieldKey, value) => {
     setFormData(prev => ({ ...prev, [fieldKey]: parseInt(value) || 0 }));
+  };
+
+  // Update a custom task field (stored at formData.custom[taskId])
+  const updateCustomField = (taskId, value) => {
+    setFormData(prev => ({ ...prev, custom: { ...(prev.custom || {}), [taskId]: value } }));
   };
 
   // Enter edit mode: pre-fill the form with the existing report's data
@@ -58968,6 +59048,88 @@ function POReportPage() {
           })]
         }),
 
+        // ===== Custom PO tasks (from Form Field Manager) =====
+        poTasks.length > 0 && m.jsx("div", {
+          className: "space-y-3",
+          children: poTasks.map(task => {
+            const storageKey = task.key || task.id;
+            if (task.type === "pos_section") {
+              // Custom POS section
+              return m.jsxs(Je, {
+                className: "p-4",
+                children: [m.jsx("h3", { className: "text-sm font-bold text-gray-700 mb-3", children: task.label }),
+                  m.jsx("div", {
+                    className: "grid grid-cols-3 gap-3",
+                    children: ["smart", "tpos", "mpos"].map(pt => m.jsxs("div", {
+                      children: [m.jsx(Qe, { className: "text-[10px] uppercase text-gray-400", children: pt === "smart" ? "Smart" : pt === "tpos" ? "TPOS" : "MPOS" }),
+                        m.jsx(yt, { type: "number", min: 0,
+                          value: formData[storageKey]?.[pt] || "",
+                          onChange: ev => updatePOSField(storageKey, pt, ev.target.value),
+                          className: "mt-1"
+                        })]
+                    }, pt))
+                  }),
+                  m.jsxs("div", {
+                    className: "mt-3 p-3 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-lg text-center text-white",
+                    children: [m.jsxs("p", { className: "text-[10px] font-bold uppercase opacity-80", children: ["Total ", task.label] }),
+                      m.jsx("p", { className: "text-2xl font-extrabold", children: formData[storageKey]?.total || 0 })]
+                  })]
+              }, task.id);
+            } else if (task.type === "number") {
+              return m.jsxs(Je, {
+                className: "p-4",
+                children: [m.jsx(Qe, { className: "text-xs font-semibold text-gray-500 uppercase tracking-wider", children: task.label }),
+                  m.jsx(yt, { type: "number", min: 0,
+                    value: formData.custom?.[task.id] || formData[storageKey] || "",
+                    onChange: ev => updateCustomField(task.id, ev.target.value),
+                    className: "mt-1.5"
+                  })]
+              }, task.id);
+            } else if (task.type === "textarea") {
+              return m.jsxs(Je, {
+                className: "p-4",
+                children: [m.jsx(Qe, { className: "text-xs font-semibold text-gray-500 uppercase tracking-wider", children: task.label }),
+                  m.jsx("textarea", {
+                    value: formData.custom?.[task.id] || formData[storageKey] || "",
+                    onChange: ev => updateCustomField(task.id, ev.target.value),
+                    className: "mt-1.5 w-full min-h-[80px] px-3 py-2 text-sm border border-gray-200 rounded-lg resize-y",
+                    placeholder: "Enter " + task.label + "..."
+                  })]
+              }, task.id);
+            } else if (task.type === "yesno") {
+              return m.jsxs(Je, {
+                className: "p-4",
+                children: [m.jsx(Qe, { className: "text-xs font-semibold text-gray-500 uppercase tracking-wider", children: task.label }),
+                  m.jsxs("div", {
+                    className: "flex gap-6 mt-2",
+                    children: [m.jsxs("label", { className: "flex items-center gap-2 cursor-pointer",
+                      children: [m.jsx("input", { type: "radio", name: task.id, value: "Yes",
+                        checked: (formData.custom?.[task.id] || formData[storageKey]) === "Yes",
+                        onChange: () => updateCustomField(task.id, "Yes")
+                      }), m.jsx("span", { className: "text-sm", children: "Yes" })]
+                    }), m.jsxs("label", { className: "flex items-center gap-2 cursor-pointer",
+                      children: [m.jsx("input", { type: "radio", name: task.id, value: "No",
+                        checked: (formData.custom?.[task.id] || formData[storageKey]) === "No",
+                        onChange: () => updateCustomField(task.id, "No")
+                      }), m.jsx("span", { className: "text-sm", children: "No" })]
+                    })]
+                  })]
+              }, task.id);
+            } else {
+              // text type
+              return m.jsxs(Je, {
+                className: "p-4",
+                children: [m.jsx(Qe, { className: "text-xs font-semibold text-gray-500 uppercase tracking-wider", children: task.label }),
+                  m.jsx(yt, {
+                    value: formData.custom?.[task.id] || formData[storageKey] || "",
+                    onChange: ev => updateCustomField(task.id, ev.target.value),
+                    className: "mt-1.5"
+                  })]
+              }, task.id);
+            }
+          })
+        }),
+
         // Error
         error && m.jsx("div", {
           className: "bg-red-50 border border-red-200 rounded-lg p-3",
@@ -58995,12 +59157,15 @@ function POMyReports() {
   const [reports, setReports] = E.useState([]);
   const [loading, setLoading] = E.useState(!0);
   const [expanded, setExpanded] = E.useState(null);
+  const [poTasks, setPoTasks] = E.useState([]);
 
   const load = async () => {
     if (!e) return;
     setLoading(!0);
     try {
-      setReports(await fetchMyPOReports(e.id));
+      const [rpts, tasks] = await Promise.all([fetchMyPOReports(e.id), rE("PO")]);
+      setReports(rpts);
+      setPoTasks(tasks.filter(t => t.active !== false && !t.system));
     } catch (err) {
       console.error("Failed to load PO reports:", err);
     } finally {
@@ -59068,7 +59233,40 @@ function POMyReports() {
                   m.jsxs("div", {
                     className: "bg-gray-50 rounded-xl px-4 py-3",
                     children: [m.jsx("p", { className: "text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2", children: "Additional Items" }), m.jsxs("div", { className: "flex items-center justify-between py-1.5 border-b border-gray-100", children: [m.jsx("span", { className: "text-[11px] font-semibold text-gray-500", children: "TN Stickers" }), m.jsx("span", { className: "text-xs font-bold text-gray-700", children: d.tn_stickers || 0 })] }), m.jsxs("div", { className: "flex items-center justify-between py-1.5", children: [m.jsx("span", { className: "text-[11px] font-semibold text-gray-500", children: "3 Fold Flyers" }), m.jsx("span", { className: "text-xs font-bold text-gray-700", children: d.three_fold_flyers || 0 })] })]
-                  })
+                  }),
+                  // Custom PO tasks
+                  poTasks.length > 0 && (() => {
+                    const customVals = [];
+                    poTasks.forEach(t => {
+                      const sk = t.key || t.id;
+                      const val = (d.custom && d.custom[t.id]) || d[sk];
+                      if (val === undefined || val === null || val === "") return;
+                      if (t.type === "pos_section" && typeof val === "object") {
+                        customVals.push(m.jsxs("div", {
+                          className: "bg-gray-50 rounded-xl px-4 py-3",
+                          children: [m.jsx("p", { className: "text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2", children: t.label }),
+                            m.jsxs("div", { className: "flex items-center gap-2 py-1.5 border-b border-gray-100 last:border-0", children: [m.jsx("span", { className: "text-[11px] font-semibold text-gray-500 w-12", children: "Smart" }), m.jsx("span", { className: "text-xs font-bold text-gray-700", children: val.smart || 0 })] }),
+                            m.jsxs("div", { className: "flex items-center gap-2 py-1.5 border-b border-gray-100 last:border-0", children: [m.jsx("span", { className: "text-[11px] font-semibold text-gray-500 w-12", children: "TPOS" }), m.jsx("span", { className: "text-xs font-bold text-gray-700", children: val.tpos || 0 })] }),
+                            m.jsxs("div", { className: "flex items-center gap-2 py-1.5 border-b border-gray-100 last:border-0", children: [m.jsx("span", { className: "text-[11px] font-semibold text-gray-500 w-12", children: "MPOS" }), m.jsx("span", { className: "text-xs font-bold text-gray-700", children: val.mpos || 0 })] }),
+                            m.jsxs("div", { className: "flex items-center gap-2 py-1.5", children: [m.jsx("span", { className: "text-[11px] font-bold text-gray-700 uppercase", children: "Total" }), m.jsx("span", { className: "text-sm font-extrabold text-cyan-600", children: val.total || 0 })] })]
+                        }, "po-custom-" + t.id));
+                      } else if (typeof val === "object" && !Array.isArray(val)) {
+                        return; // skip non-POS objects
+                      } else {
+                        let displayVal = val;
+                        if (t.type === "yesno") displayVal = val === "Yes" ? "✓ Yes" : val === "No" ? "✗ No" : val;
+                        else if (Array.isArray(val)) displayVal = val.join(", ");
+                        customVals.push(m.jsxs("div", {
+                          className: "flex items-center justify-between py-1.5 border-b border-gray-100",
+                          children: [m.jsx("span", { className: "text-[11px] font-semibold text-gray-500", children: t.label }), m.jsx("span", { className: "text-xs font-bold text-gray-700", children: displayVal })]
+                        }, "po-custom-" + t.id));
+                      }
+                    });
+                    return customVals.length > 0 ? m.jsxs("div", {
+                      className: "bg-gray-50 rounded-xl px-4 py-3",
+                      children: [m.jsx("p", { className: "text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2", children: "Additional Fields" }), customVals]
+                    }) : null;
+                  })()
                 ]
               })
             })]
@@ -59083,33 +59281,39 @@ function POMyReports() {
 // Supervisor — PO Reports panel (all POs, with filters)
 // ============================================================================
 function SupervisorPOReports() {
-  const { assignedMarkets } = Qn();
+  const { user: e, assignedMarkets } = Qn();
+  const isManager = e?.role === "mo_po_manager";
   const [reports, setReports] = E.useState([]);
   const [poUsers, setPOUsers] = E.useState([]);
   const [markets, setMarkets] = E.useState([]);
   const [loading, setLoading] = E.useState(!0);
   const [expanded, setExpanded] = E.useState(null);
+  const [poTasks, setPoTasks] = E.useState([]);
   const [filterPO, setFilterPO] = E.useState("");
   const [fromDate, setFromDate] = E.useState("");
   const [toDate, setToDate] = E.useState("");
   const [statusDate, setStatusDate] = E.useState(() => new Date().toISOString().split("T")[0]);
   const [showPreview, setShowPreview] = E.useState(!1);
+  const [poRegion, setPoRegion] = E.useState("all");
 
-  // The supervisor's assigned market IDs (region-scoped)
+  // The supervisor's assigned market IDs (region-scoped).
+  // Managers see ALL PO reports (no market filtering).
   const myMarketIds = E.useMemo(() => new Set((assignedMarkets || []).map(mk => mk.id)), [assignedMarkets]);
 
   const load = async () => {
     setLoading(!0);
     try {
-      const [rpts, users, mkts] = await Promise.all([fetchAllPOReports(), fetchPOUsers(), za()]);
-      // Filter to only PO reports/markets in this supervisor's assigned markets
-      const myRpts = myMarketIds.size === 0 ? rpts : rpts.filter(r => !r.market_id || myMarketIds.has(r.market_id));
-      const myMkts = myMarketIds.size === 0 ? mkts : mkts.filter(mk => myMarketIds.has(mk.id));
+      const [rpts, users, mkts, tasks] = await Promise.all([fetchAllPOReports(), fetchPOUsers(), za(), rE("PO")]);
+      // Managers see all; supervisors only see their assigned markets
+      const skipFilter = isManager || myMarketIds.size === 0;
+      const myRpts = skipFilter ? rpts : rpts.filter(r => !r.market_id || myMarketIds.has(r.market_id));
+      const myMkts = skipFilter ? mkts : mkts.filter(mk => myMarketIds.has(mk.id));
       const myUserIds = new Set(myRpts.map(r => r.user_id).filter(Boolean));
       const myUsers = users.filter(u => myUserIds.has(u.id));
       setReports(myRpts);
       setPOUsers(myUsers);
       setMarkets(myMkts);
+      setPoTasks(tasks.filter(t => t.active !== false && !t.system));
     } catch (err) {
       console.error("Failed to load PO data:", err);
     } finally {
@@ -59122,20 +59326,25 @@ function SupervisorPOReports() {
   // Build unique PO list for filter dropdown
   const poList = Array.from(new Map(reports.map(r => [r.user?.id, r.user]).filter(([id]) => id)).values());
 
-  // Apply filters
+  // Apply filters (including region)
   const filtered = reports.filter(r => {
     if (filterPO && r.user?.id !== filterPO) return false;
     // Normalize date for comparison (handle both DATE and TIMESTAMPTZ)
     const reportDate = r.date ? (typeof r.date === "string" ? r.date.substring(0, 10) : new Date(r.date).toISOString().substring(0, 10)) : "";
     if (fromDate && reportDate < fromDate) return false;
     if (toDate && reportDate > toDate) return false;
+    // Region filter
+    if (poRegion !== "all") {
+      const mk = markets.find(m => m.id === r.market_id);
+      if (!mk || mk.region !== poRegion) return false;
+    }
     return true;
   });
 
   // ===== PO City Status (for the selected statusDate) =====
   // Get unique markets that have at least one PO officer assigned
   const poMarketIds = Array.from(new Set(poUsers.map(u => u.market_id).filter(Boolean)));
-  const poMarkets = markets.filter(m => poMarketIds.includes(m.id));
+  const poMarkets = markets.filter(m => poMarketIds.includes(m.id) && (poRegion === "all" || m.region === poRegion));
   // Get reports submitted on statusDate
   // Normalize: r.date might be "2026-07-17" (DATE) or "2026-07-17T00:00:00+00:00" (TIMESTAMPTZ)
   // Compare only the first 10 chars (YYYY-MM-DD)
@@ -59217,6 +59426,17 @@ function SupervisorPOReports() {
           })]
         })]
       })]
+    }),
+
+    // Region filter chips
+    m.jsx("div", {
+      className: "flex flex-wrap gap-1.5",
+      children: ["all", "NORTHCENTRAL", "NORTHEAST", "NORTHWEST", "LAGOS", "SOUTHSOUTH", "SOUTHEAST", "SOUTHWEST"].map(reg => m.jsx("button", {
+        onClick: () => setPoRegion(reg),
+        className: `text-[10px] font-bold uppercase px-2.5 py-1.5 rounded-lg border transition-all
+          ${poRegion === reg ? (reg === "all" ? "bg-gray-700 text-white border-gray-700" : "bg-purple-600 text-white border-purple-600") : (reg === "all" ? "bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100" : "bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100")}`,
+        children: reg === "all" ? "All Regions" : reg
+      }, reg))
     }),
 
     // ===== PO City Status grid =====
@@ -59352,6 +59572,81 @@ function SupervisorPOReports() {
                   m.jsxs("div", {
                     className: "bg-gray-50 rounded-xl px-4 py-3",
                     children: [m.jsx("p", { className: "text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2", children: "Additional Items" }), m.jsxs("div", { className: "flex items-center justify-between py-1.5 border-b border-gray-100", children: [m.jsx("span", { className: "text-[11px] font-semibold text-gray-500", children: "TN Stickers" }), m.jsx("span", { className: "text-xs font-bold text-gray-700", children: d.tn_stickers || 0 })] }), m.jsxs("div", { className: "flex items-center justify-between py-1.5", children: [m.jsx("span", { className: "text-[11px] font-semibold text-gray-500", children: "3 Fold Flyers" }), m.jsx("span", { className: "text-xs font-bold text-gray-700", children: d.three_fold_flyers || 0 })] })]
+                  }),
+                  // Custom PO tasks
+                  poTasks.length > 0 && (() => {
+                    const customVals = [];
+                    poTasks.forEach(t => {
+                      const sk = t.key || t.id;
+                      const val = (d.custom && d.custom[t.id]) || d[sk];
+                      if (val === undefined || val === null || val === "") return;
+                      if (t.type === "pos_section" && typeof val === "object") {
+                        customVals.push(m.jsxs("div", {
+                          className: "bg-gray-50 rounded-xl px-4 py-3",
+                          children: [m.jsx("p", { className: "text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2", children: t.label }),
+                            m.jsxs("div", { className: "flex items-center gap-2 py-1.5 border-b border-gray-100 last:border-0", children: [m.jsx("span", { className: "text-[11px] font-semibold text-gray-500 w-12", children: "Smart" }), m.jsx("span", { className: "text-xs font-bold text-gray-700", children: val.smart || 0 })] }),
+                            m.jsxs("div", { className: "flex items-center gap-2 py-1.5 border-b border-gray-100 last:border-0", children: [m.jsx("span", { className: "text-[11px] font-semibold text-gray-500 w-12", children: "TPOS" }), m.jsx("span", { className: "text-xs font-bold text-gray-700", children: val.tpos || 0 })] }),
+                            m.jsxs("div", { className: "flex items-center gap-2 py-1.5 border-b border-gray-100 last:border-0", children: [m.jsx("span", { className: "text-[11px] font-semibold text-gray-500 w-12", children: "MPOS" }), m.jsx("span", { className: "text-xs font-bold text-gray-700", children: val.mpos || 0 })] }),
+                            m.jsxs("div", { className: "flex items-center gap-2 py-1.5", children: [m.jsx("span", { className: "text-[11px] font-bold text-gray-700 uppercase", children: "Total" }), m.jsx("span", { className: "text-sm font-extrabold text-cyan-600", children: val.total || 0 })] })]
+                        }, "sup-po-custom-" + t.id));
+                      } else if (typeof val === "object" && !Array.isArray(val)) {
+                        return;
+                      } else {
+                        let displayVal = val;
+                        if (t.type === "yesno") displayVal = val === "Yes" ? "✓ Yes" : val === "No" ? "✗ No" : val;
+                        else if (Array.isArray(val)) displayVal = val.join(", ");
+                        customVals.push(m.jsxs("div", {
+                          className: "flex items-center justify-between py-1.5 border-b border-gray-100",
+                          children: [m.jsx("span", { className: "text-[11px] font-semibold text-gray-500", children: t.label }), m.jsx("span", { className: "text-xs font-bold text-gray-700", children: displayVal })]
+                        }, "sup-po-custom-" + t.id));
+                      }
+                    });
+                    return customVals.length > 0 ? m.jsxs("div", {
+                      className: "bg-gray-50 rounded-xl px-4 py-3",
+                      children: [m.jsx("p", { className: "text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2", children: "Additional Fields" }), customVals]
+                    }) : null;
+                  })(),
+                  // Edit + Delete buttons for supervisors/managers
+                  m.jsxs("div", {
+                    className: "flex gap-2 mt-4 pt-3 border-t border-gray-100",
+                    children: [
+                      m.jsxs(ht, {
+                        size: "sm",
+                        variant: "outline",
+                        onClick: async () => {
+                          const newData = prompt("Edit PO Report Data (JSON):", JSON.stringify(d, null, 2));
+                          if (newData === null) return;
+                          try {
+                            const parsed = JSON.parse(newData);
+                            const { error } = await It.from("po_reports").update({ data: parsed }).eq("id", r.id);
+                            if (error) throw new Error(error.message);
+                            ui.success("PO report updated");
+                            load();
+                          } catch (err) {
+                            ui.error("Update failed: " + err.message);
+                          }
+                        },
+                        className: "text-xs border-cyan-200 text-cyan-600 hover:bg-cyan-50",
+                        children: [m.jsx(cg, { size: 12, className: "mr-1" }), "Edit Report"]
+                      }),
+                      m.jsxs(ht, {
+                        size: "sm",
+                        variant: "outline",
+                        onClick: async () => {
+                          if (!confirm("Delete this PO report? This cannot be undone.")) return;
+                          try {
+                            const { error } = await It.from("po_reports").delete().eq("id", r.id);
+                            if (error) throw new Error(error.message);
+                            ui.success("PO report deleted");
+                            load();
+                          } catch (err) {
+                            ui.error(err.message || "Failed to delete");
+                          }
+                        },
+                        className: "text-xs border-red-200 text-red-600 hover:bg-red-50",
+                        children: [m.jsx(dg, { size: 12, className: "mr-1" }), "Delete"]
+                      })
+                    ]
                   })
                 ]
               })
@@ -59365,6 +59660,7 @@ function SupervisorPOReports() {
     showPreview && m.jsx(POPreviewModal, {
       reports: filtered,
       markets: markets,
+      tasks: poTasks,
       onClose: () => setShowPreview(!1),
       onExcel: exportExcel
     })
@@ -59375,7 +59671,7 @@ function SupervisorPOReports() {
 // ============================================================================
 // PO Preview Modal — full-screen table view of PO reports (like XU for MO/MS)
 // ============================================================================
-function POPreviewModal({ reports, markets, onClose, onExcel }) {
+function POPreviewModal({ reports, markets, tasks, onClose, onExcel }) {
   const dates = [...new Set(reports.map(r => r.date))].sort();
   const poNames = Array.from(new Map(reports.map(r => [r.user?.id, r.user]).filter(([id]) => id)).values());
 
@@ -59386,6 +59682,12 @@ function POPreviewModal({ reports, markets, onClose, onExcel }) {
     { key: "rr_stock", label: "R&R Stock", bg: "#FFE5D0", fg: "#7A3200" },
     { key: "total_faulty", label: "Total Faulty", bg: "#F8D7DA", fg: "#721C24" }
   ];
+
+  // Custom PO tasks (non-system, non-hardcoded)
+  const allCustomTasks = (tasks || []).filter(t => t.active !== false && !t.system);
+  // Split: custom POS sections get 4 sub-columns (Smart/TPOS/MPOS/Total), others get 1 column
+  const customPosCols = allCustomTasks.filter(t => t.type === "pos_section");
+  const customScalarCols = allCustomTasks.filter(t => t.type !== "pos_section");
 
   return m.jsx("div", {
     className: "fixed inset-0 z-50 bg-black/50 flex items-stretch justify-center overflow-hidden",
@@ -59433,7 +59735,7 @@ function POPreviewModal({ reports, markets, onClose, onExcel }) {
                   // Title row — green banner
                   m.jsx("tr", {
                     children: m.jsx("td", {
-                      colSpan: 4 + poPosCols.length * 4 + 3,
+                      colSpan: 4 + poPosCols.length * 4 + 3 + customPosCols.length * 4 + customScalarCols.length,
                       className: "text-center font-bold text-sm py-2 px-3 text-black",
                       style: { background: "#92D050", border: "1px solid #000" },
                       children: "PO DAILY REPORT"
@@ -59484,6 +59786,20 @@ function POPreviewModal({ reports, markets, onClose, onExcel }) {
                         className: "border border-black px-2 py-1 text-center font-bold whitespace-nowrap",
                         children: "3-Fold Flyers"
                       }),
+                      // Custom POS section headers (colSpan=4 each, with sub-columns)
+                      customPosCols.map(t => m.jsx("th", {
+                        colSpan: 4,
+                        className: "border border-black px-2 py-1 text-center font-bold",
+                        style: { background: "#E8E8E8", color: "#1a1a1a" },
+                        children: t.label
+                      }, "hdr-pos-" + t.id)),
+                      // Custom scalar column headers
+                      customScalarCols.map(t => m.jsx("th", {
+                        rowSpan: 2,
+                        className: "border border-black px-2 py-1 text-center font-bold whitespace-nowrap",
+                        style: { background: "#F0F0F0", color: "#333333" },
+                        children: t.label
+                      }, "hdr-scalar-" + t.id)),
                       m.jsx("th", {
                         rowSpan: 2,
                         className: "border border-black px-2 py-1 text-center font-bold whitespace-nowrap",
@@ -59491,15 +59807,25 @@ function POPreviewModal({ reports, markets, onClose, onExcel }) {
                       })
                     ]
                   }),
-                  // Sub-header row: Smart / TPOS / MPOS / Total for each POS section
+                  // Sub-header row: Smart / TPOS / MPOS / Total for each POS section (system + custom)
                   m.jsx("tr", {
-                    children: poPosCols.map(col => m.jsxs(m.Fragment, {
-                      children: ["Smart", "TPOS", "MPOS", "Total"].map(pt => m.jsx("th", {
-                        className: "border border-black px-1 py-1 text-center font-bold",
-                        style: { background: col.bg, color: col.fg },
-                        children: pt
-                      }, `${col.key}-${pt}`))
-                    }, col.key))
+                    children: [
+                      ...poPosCols.map(col => m.jsxs(m.Fragment, {
+                        children: ["Smart", "TPOS", "MPOS", "Total"].map(pt => m.jsx("th", {
+                          className: "border border-black px-1 py-1 text-center font-bold",
+                          style: { background: col.bg, color: col.fg },
+                          children: pt
+                        }, `${col.key}-${pt}`))
+                      }, col.key)),
+                      // Custom POS section sub-headers
+                      ...customPosCols.map(t => m.jsxs(m.Fragment, {
+                        children: ["Smart", "TPOS", "MPOS", "Total"].map(pt => m.jsx("th", {
+                          className: "border border-black px-1 py-1 text-center font-bold",
+                          style: { background: "#E8E8E8", color: "#1a1a1a" },
+                          children: pt
+                        }, `${t.id}-${pt}`))
+                      }, t.id))
+                    ]
                   })
                 ]
               }),
@@ -59547,6 +59873,38 @@ function POPreviewModal({ reports, markets, onClose, onExcel }) {
                       }),
                       m.jsx("td", { className: "border border-gray-300 px-2 py-1 text-center font-bold", children: d.tn_stickers || 0 }),
                       m.jsx("td", { className: "border border-gray-300 px-2 py-1 text-center font-bold", children: d.three_fold_flyers || 0 }),
+                      // Custom POS section cells: Smart / TPOS / MPOS / Total
+                      customPosCols.map(t => {
+                        const sk = t.key || t.id;
+                        const v = d[sk] || (d.custom && d.custom[t.id]) || { smart: 0, tpos: 0, mpos: 0, total: 0 };
+                        return m.jsxs(m.Fragment, {
+                          children: [
+                            m.jsx("td", { className: "border border-gray-300 px-1 py-1 text-center", children: v.smart || 0 }, `${t.id}-s`),
+                            m.jsx("td", { className: "border border-gray-300 px-1 py-1 text-center", children: v.tpos || 0 }, `${t.id}-t`),
+                            m.jsx("td", { className: "border border-gray-300 px-1 py-1 text-center", children: v.mpos || 0 }, `${t.id}-m`),
+                            m.jsx("td", { className: "border border-gray-300 px-1 py-1 text-center font-bold", children: v.total || 0 }, `${t.id}-total`)
+                          ]
+                        }, "pos-" + t.id);
+                      }),
+                      // Custom scalar cells
+                      customScalarCols.map(t => {
+                        const sk = t.key || t.id;
+                        let val = (d.custom && d.custom[t.id]) || d[sk];
+                        if (val === undefined || val === null) val = "";
+                        if (typeof val === "object" && !Array.isArray(val)) {
+                          val = "";
+                        } else if (Array.isArray(val)) {
+                          val = val.join(", ");
+                        } else if (t.type === "yesno") {
+                          val = val === "Yes" ? "Y" : val === "No" ? "N" : val;
+                        } else if (t.type === "number") {
+                          val = parseInt(String(val)) || 0;
+                        }
+                        return m.jsx("td", {
+                          className: "border border-gray-300 px-2 py-1 text-center",
+                          children: val
+                        }, "scalar-" + t.id);
+                      }),
                       m.jsx("td", { className: "border border-gray-300 px-2 py-1 text-center text-gray-500 whitespace-nowrap", children: r.submitted_at || "—" })
                     ]
                   }, r.id);
@@ -60305,12 +60663,185 @@ function formatPOReportText(report, market) {
     posLine("Total Faulty", "total_faulty"),
     "",
     "TN Stickers: " + (r.tn_stickers || 0),
-    "3 Fold Flyers: " + (r.three_fold_flyers || 0),
-    "",
-    "Submitted at: " + (report.submitted_at || "")
-  ].join("\n");
+    "3 Fold Flyers: " + (r.three_fold_flyers || 0)
+  ];
+
+  // Append custom PO task fields
+  if (r.custom) {
+    lines.push("", "Additional Fields:");
+    Object.keys(r.custom).forEach(taskId => {
+      const val = r.custom[taskId];
+      if (val !== undefined && val !== null && val !== "") {
+        let displayVal = val;
+        if (typeof val === "object") {
+          displayVal = "Smart=" + (val.smart||0) + " TPOS=" + (val.tpos||0) + " MPOS=" + (val.mpos||0) + " Total=" + (val.total||0);
+        } else if (Array.isArray(val)) {
+          displayVal = val.join(", ");
+        }
+        lines.push(displayVal);
+      }
+    });
+  }
+
+  lines.push("", "Submitted at: " + (report.submitted_at || ""));
+  return lines.join("\n");
 }
 
+// ============================================================================
+// MO/PO Manager Dashboard — overview of all MO + PO reports
+// ============================================================================
+function MoPoManagerDashboard() {
+  const e = no();
+  const [t, r] = E.useState(() => new Date().toISOString().split("T")[0]);
+  const [markets, setMarkets] = E.useState([]);
+  const [moReports, setMoReports] = E.useState([]);
+  const [poReports, setPoReports] = E.useState([]);
+  const [loading, setLoading] = E.useState(!0);
+  const [dashRegion, setDashRegion] = E.useState("all");
+
+  const load = async () => {
+    setLoading(!0);
+    try {
+      const [mkts] = await Promise.all([za()]);
+      setMarkets(mkts);
+      // Fetch MO reports for the selected date
+      const scope = {
+        canViewMO: !0, canViewMS: !1,
+        canViewAllMarkets: !0, canViewAllStaff: !0,
+        allowedMarketIds: [], allowedUserIds: [],
+        canManage: !0, canSubmitReports: !1
+      };
+      const moRpts = await Pl(scope, t);
+      setMoReports(moRpts);
+      // Fetch PO reports (all, then filter by date client-side)
+      const poRpts = await fetchAllPOReports();
+      setPoReports(poRpts);
+    } catch (err) {
+      console.error("Failed to load manager dashboard:", err);
+    } finally {
+      setLoading(!1);
+    }
+  };
+
+  E.useEffect(() => { load() }, [t]);
+
+  const moMarkets = markets.filter(m => m.team === "MO" && (dashRegion === "all" || m.region === dashRegion));
+  const poMarkets = markets.filter(m => m.team === "PO" && (dashRegion === "all" || m.region === dashRegion));
+  // Only count submissions from markets in the selected region (prevents negative pending)
+  const moMarketIdSet = new Set(moMarkets.map(m => m.id));
+  const poMarketIdSet = new Set(poMarkets.map(m => m.id));
+  const moSubmittedIds = new Set(moReports.filter(r => moMarketIdSet.has(r.market_id)).map(r => r.market_id));
+  const poSubmittedIds = new Set(poReports.filter(r => {
+    if (!r.date) return false;
+    const rd = typeof r.date === "string" ? r.date.substring(0, 10) : new Date(r.date).toISOString().substring(0, 10);
+    return rd === t && poMarketIdSet.has(r.market_id);
+  }).map(r => r.market_id));
+
+  const moPending = Math.max(0, moMarkets.length - moSubmittedIds.size);
+  const poPending = Math.max(0, poMarkets.length - poSubmittedIds.size);
+
+  const stats = [
+    { label: "MO Markets", value: moMarkets.length, color: "#047857", borderColor: "border-emerald-600" },
+    { label: "MO Submitted", value: moSubmittedIds.size, color: "#16a34a", borderColor: "border-green-500" },
+    { label: "MO Pending", value: moPending, color: "#dc2626", borderColor: "border-red-500" },
+    { label: "PO Offices", value: poMarkets.length, color: "#0891b2", borderColor: "border-cyan-600" },
+    { label: "PO Submitted", value: poSubmittedIds.size, color: "#0d9488", borderColor: "border-teal-500" },
+    { label: "PO Pending", value: poPending, color: "#dc2626", borderColor: "border-red-500" }
+  ];
+
+  // Render a market status grid (reusable for MO and PO)
+  const renderMarketGrid = (mkts, submittedIds, label, accentColor) => m.jsxs(Je, {
+    className: "p-5",
+    children: [m.jsxs("h3", {
+      className: "text-sm font-bold text-gray-800 mb-4 flex items-center gap-2",
+      children: [m.jsx(og, { className: accentColor, size: 16 }), label]
+    }), m.jsxs("p", {
+      className: "text-xs text-gray-400 mb-3",
+      children: [submittedIds.size, " of ", mkts.length, " submitted"]
+    }), loading ? m.jsx("div", {
+      className: "space-y-2",
+      children: Array.from({ length: 4 }).map((_, i) => m.jsx(Zn, { className: "h-12 rounded-lg" }, i))
+    }) : mkts.length === 0 ? m.jsx("p", {
+      className: "text-sm text-gray-400 text-center py-6",
+      children: "No " + label.toLowerCase() + " found"
+    }) : m.jsx("div", {
+      className: "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2",
+      children: mkts.map(mk => {
+        const submitted = submittedIds.has(mk.id);
+        const rpt = (label.includes("MO") ? moReports : poReports).find(r => r.market_id === mk.id);
+        return m.jsxs("div", {
+          className: `flex items-center gap-2.5 px-3 py-2.5 rounded-lg border-2 transition-all
+            ${submitted ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-100"}`,
+          children: [m.jsx("div", {
+            className: `w-7 h-7 rounded-lg flex items-center justify-center text-white shrink-0
+              ${submitted ? "bg-emerald-500" : "bg-red-400"}`,
+            children: submitted ? m.jsx(ys, { size: 14 }) : m.jsx(El, { size: 14 })
+          }), m.jsxs("div", {
+            className: "min-w-0 flex-1",
+            children: [m.jsx("p", {
+              className: "font-bold text-gray-700 text-xs leading-tight",
+              children: mk.name
+            }), m.jsxs("p", {
+              className: "text-[10px] text-gray-400 leading-tight",
+              children: [mk.city, mk.region ? " · " + mk.region : "", submitted && rpt?.submitted_at ? " · " + rpt.submitted_at : ""]
+            })]
+          })]
+        }, mk.id);
+      })
+    })]
+  });
+
+  return m.jsxs("div", {
+    className: "space-y-5",
+    children: [m.jsxs("div", {
+      className: "flex items-start justify-between flex-wrap gap-4",
+      children: [m.jsxs("div", {
+        children: [m.jsxs("h1", {
+          className: "text-xl font-extrabold text-gray-800 flex items-center gap-2",
+          children: [m.jsx(Ad, { className: "text-teal-600", size: 22 }), "MO/PO Manager Dashboard"]
+        }), m.jsx("p", {
+          className: "text-xs text-gray-400 mt-1",
+          children: "Overview of all MO and PO reports across all regions"
+        })]
+      }), m.jsxs("div", {
+        className: "flex items-center gap-2",
+        children: [m.jsx(Ml, { size: 14, className: "text-gray-400" }), m.jsx(yt, {
+          type: "date", value: t, onChange: k => r(k.target.value), className: "w-40 h-8 text-xs"
+        }), m.jsx(ht, {
+          size: "sm", variant: "outline",
+          onClick: () => r(new Date().toISOString().split("T")[0]),
+          className: "h-8 text-xs",
+          children: "Today"
+        })]
+      })]
+    }),
+
+    // Region picker chips
+    m.jsx("div", {
+      className: "flex flex-wrap gap-1.5",
+      children: ["all", "NORTHCENTRAL", "NORTHEAST", "NORTHWEST", "LAGOS", "SOUTHSOUTH", "SOUTHEAST", "SOUTHWEST"].map(reg => m.jsx("button", {
+        onClick: () => setDashRegion(reg),
+        className: `text-[10px] font-bold uppercase px-2.5 py-1.5 rounded-lg border transition-all
+          ${dashRegion === reg ? (reg === "all" ? "bg-gray-700 text-white border-gray-700" : "bg-purple-600 text-white border-purple-600") : (reg === "all" ? "bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100" : "bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100")}`,
+        children: reg === "all" ? "All Regions" : reg
+      }, reg))
+    }),
+
+    // Stats row
+    m.jsx(nx, {
+      stats: stats,
+      loading: loading,
+      columns: 6
+    }),
+
+    // MO Market Status grid
+    renderMarketGrid(moMarkets, moSubmittedIds, "MO Market Status", "text-emerald-500"),
+
+    // PO Office Status grid
+    renderMarketGrid(poMarkets, poSubmittedIds, "PO Office Status", "text-cyan-500")
+    ]
+  });
+}
 function Vz() {
   const {
     user: e,
@@ -60435,6 +60966,26 @@ function Vz() {
               }), m.jsx(Lt, {
                 path: "ranking",
                 element: m.jsx(oz, {})
+              })]
+            })
+          })
+        }), m.jsx(Lt, {
+          path: "/mo-po-manager/*",
+          element: m.jsx(il, {
+            role: "mo_po_manager",
+            children: m.jsxs(Wo, {
+              children: [m.jsx(Lt, {
+                index: !0,
+                element: m.jsx(MoPoManagerDashboard, {})
+              }), m.jsx(Lt, {
+                path: "reports",
+                element: m.jsx(Eh, { fixedType: "MO" })
+              }), m.jsx(Lt, {
+                path: "po-reports",
+                element: m.jsx(SupervisorPOReports, {})
+              }), m.jsx(Lt, {
+                path: "requests",
+                element: m.jsx(SupervisorRequestTable, {})
               })]
             })
           })
