@@ -26232,6 +26232,8 @@ function YO({
     // Sync preview settings from Supabase on app load (so all users share config)
     syncPreviewFieldConfig();
     syncPreviewTaskConfig();
+    // Sync admin-managed Change-of-Status reasons list
+    syncCOSReasons();
     const u = sessionStorage.getItem(Wf.USER);
     if (u) try {
       const d = JSON.parse(u);
@@ -27295,6 +27297,11 @@ const _j = [
     label: "Preview Tasks",
     icon: "ClipboardList",
     path: "/admin/preview-tasks",
+    roles: ["admin"]
+  }, {
+    label: "COS Reasons",
+    icon: "FileText",
+    path: "/admin/cos-reasons",
     roles: ["admin"]
   }, {
     label: "Dashboard",
@@ -34328,6 +34335,13 @@ const xD = [{
   path: "/admin/preview-tasks",
   iconBg: "bg-cyan-100",
   iconText: "text-cyan-600"
+}, {
+  label: "COS Reasons",
+  desc: "Manage change-of-status reason dropdown",
+  icon: qi,
+  path: "/admin/cos-reasons",
+  iconBg: "bg-emerald-100",
+  iconText: "text-emerald-600"
 }];
 
 function vD() {
@@ -36516,6 +36530,187 @@ function ptmComponent() {
   })
 }
 
+// ============================================================================
+// Change of Status — Reason Manager (admin only)
+// Lets an admin add / remove reasons that MO/PO users can pick from when
+// submitting a change-of-status request. Stored in app_settings.cos_reasons.
+// ============================================================================
+function COSReasonsManager() {
+  const [reasons, setReasons] = E.useState(() => getCOSReasons());
+  const [newReason, setNewReason] = E.useState("");
+  const [loading, setLoading] = E.useState(!0);
+  const [saving, setSaving] = E.useState(!1);
+  const [error, setError] = E.useState("");
+
+  // Initial sync from DB on mount
+  E.useEffect(() => {
+    let mounted = !0;
+    (async () => {
+      await syncCOSReasons();
+      if (mounted) { setReasons(getCOSReasons()); setLoading(!1); }
+    })();
+    // Live updates from other tabs / saves
+    const refresh = () => setReasons(getCOSReasons());
+    window.addEventListener("cos-reasons-changed", refresh);
+    window.addEventListener("storage", refresh);
+    return () => {
+      mounted = !1;
+      window.removeEventListener("cos-reasons-changed", refresh);
+      window.removeEventListener("storage", refresh);
+    };
+  }, []);
+
+  const addReason = async (ev) => {
+    ev && ev.preventDefault();
+    setError("");
+    const trimmed = (newReason || "").trim();
+    if (!trimmed) { setError("Reason cannot be empty."); return; }
+    const exists = reasons.some(r => r.toLowerCase() === trimmed.toLowerCase());
+    if (exists) { setError("This reason already exists."); return; }
+    setSaving(!0);
+    try {
+      const updated = await addCOSReason(trimmed);
+      setReasons(updated);
+      setNewReason("");
+      ui.success("Reason added");
+    } catch (err) {
+      setError(err.message || "Failed to add reason");
+    } finally {
+      setSaving(!1);
+    }
+  };
+
+  const removeReason = async (reason) => {
+    if (!confirm(`Remove reason "${reason}"? This cannot be undone.`)) return;
+    setSaving(!0);
+    try {
+      const updated = await removeCOSReason(reason);
+      setReasons(updated);
+      ui.success("Reason removed");
+    } catch (err) {
+      ui.error(err.message || "Failed to remove reason");
+    } finally {
+      setSaving(!1);
+    }
+  };
+
+  const resetToDefault = async () => {
+    if (!confirm("Reset all reasons to the default list? Any custom reasons you added will be lost.")) return;
+    setSaving(!0);
+    try {
+      const updated = await saveCOSReasons(DEFAULT_COS_REASONS);
+      setReasons(updated);
+      ui.success("Reasons reset to default");
+    } catch (err) {
+      ui.error(err.message || "Failed to reset");
+    } finally {
+      setSaving(!1);
+    }
+  };
+
+  return m.jsxs("div", {
+    className: "space-y-5",
+    children: [m.jsxs("div", {
+      children: [m.jsxs("h1", {
+        className: "text-xl font-extrabold text-gray-800 flex items-center gap-2",
+        children: [m.jsx(qi, { className: "text-emerald-600", size: 22 }), "Change of Status Reasons"]
+      }), m.jsx("p", {
+        className: "text-xs text-gray-400 mt-1",
+        children: "Manage the list of reasons MOs and POs can pick from when submitting a change-of-status request. Changes apply to all users immediately."
+      })]
+    }),
+
+      // Add new reason
+      m.jsxs(Je, {
+        className: "p-5",
+        children: [m.jsxs("h3", {
+          className: "text-sm font-bold text-gray-800 mb-3 flex items-center gap-2",
+          children: [m.jsx(cg, { className: "text-emerald-500", size: 16 }), "Add New Reason"]
+        }), m.jsxs("form", {
+          onSubmit: addReason,
+          className: "flex flex-col sm:flex-row gap-2",
+          children: [m.jsx(yt, {
+            value: newReason,
+            onChange: t => setNewReason(t.target.value),
+            placeholder: "e.g. faulty keypad",
+            className: "flex-1",
+            disabled: saving
+          }), m.jsxs(ht, {
+            type: "submit",
+            disabled: saving || !newReason.trim(),
+            className: "bg-emerald-600 hover:bg-emerald-700 text-white",
+            children: [m.jsx(ug, { size: 14, className: "mr-1" }), saving ? "Adding..." : "Add Reason"]
+          })]
+        }), error && m.jsx("div", {
+          className: "mt-2 bg-red-50 border border-red-200 rounded-lg p-2",
+          children: m.jsx("p", { className: "text-xs text-red-600 font-medium", children: error })
+        })]
+      }),
+
+      // Existing reasons list
+      m.jsxs(Je, {
+        className: "p-5",
+        children: [m.jsxs("div", {
+          className: "flex items-center justify-between mb-3 flex-wrap gap-2",
+          children: [m.jsxs("h3", {
+            className: "text-sm font-bold text-gray-800 flex items-center gap-2",
+            children: [m.jsx(ao, { className: "text-emerald-500", size: 16 }), "Current Reasons"]
+          }), m.jsxs("div", {
+            className: "flex items-center gap-2",
+            children: [m.jsxs("span", {
+              className: "text-[10px] font-bold text-gray-400 uppercase",
+              children: [reasons.length, " reason(s)"]
+            }), m.jsx(ht, {
+              variant: "outline",
+              size: "sm",
+              onClick: resetToDefault,
+              disabled: saving,
+              className: "text-xs border-amber-200 text-amber-600 hover:bg-amber-50",
+              children: "Reset to Default"
+            })]
+          })]
+        }), loading ? m.jsx("div", {
+          className: "space-y-2",
+          children: Array.from({ length: 5 }).map((_, i) => m.jsx(Zn, { className: "h-10" }, i))
+        }) : reasons.length === 0 ? m.jsx("p", {
+          className: "text-sm text-gray-400 text-center py-6",
+          children: "No reasons configured. Add one above or reset to default."
+        }) : m.jsx("div", {
+          className: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2",
+          children: reasons.map((r, idx) => m.jsxs("div", {
+            className: "flex items-center justify-between gap-2 p-2.5 bg-gray-50 rounded-lg border border-gray-200",
+            children: [m.jsxs("div", {
+              className: "flex items-center gap-2 min-w-0 flex-1",
+              children: [m.jsx("span", {
+                className: "text-[10px] font-bold text-gray-400 shrink-0",
+                children: (idx + 1) + "."
+              }), m.jsx("span", {
+                className: "text-xs text-gray-700 truncate",
+                children: r
+              })]
+            }), m.jsx("button", {
+              type: "button",
+              onClick: () => removeReason(r),
+              disabled: saving,
+              title: "Remove reason",
+              className: "text-gray-400 hover:text-red-500 transition-colors p-1 disabled:opacity-50",
+              children: m.jsx(dg, { size: 14 })
+            })]
+          }, r + "_" + idx))
+        })]
+      }),
+
+      // Info note
+      m.jsxs(Je, {
+        className: "p-4 bg-emerald-50 border-emerald-200",
+        children: [m.jsx("p", {
+          className: "text-[11px] text-emerald-700 leading-relaxed",
+          children: "Reasons are stored in the app_settings table (key: cos_reasons) and synced to all logged-in users. MOs and POs will see the updated dropdown the next time they open the Change of Status page."
+        })]
+      })]
+  });
+}
+
 function tL() {
   const [e, t] = E.useState([]), [r, n] = E.useState([]), [s, o] = E.useState(!0), l = async () => {
     o(!0);
@@ -36748,6 +36943,99 @@ async function updateChangeOfStatusStatus(id, newStatus) {
     .single();
   if (error) throw new Error(`Failed to update request: ${error.message}`);
   return data;
+}
+
+// ============================================================================
+// Change of Status — Reason List (admin-managed)
+// Admins can add/remove reasons that MO/PO users pick from when submitting a
+// change-of-status request. Stored in app_settings table as key = "cos_reasons"
+// (JSON array of strings). Falls back to DEFAULT_COS_REASONS if not set.
+// Mirrors the pattern used by preview_fields / preview_tasks config.
+// ============================================================================
+
+const DEFAULT_COS_REASONS = ["bad printer", "bad card chip", "bad charging port", "damage part", "faulty button", "not powering on", "software error", "hanging", "screen discoloration", "broken screen", "severe damage(multiple damages)"];
+
+const COS_REASONS_KEY = "drs_cos_reasons";
+
+// In-memory cache for COS reasons (synced from Supabase on app load).
+let _cosReasonsCache = null;
+
+// Sync getter — returns cached list (or DEFAULT_COS_REASONS if nothing cached).
+function getCOSReasons() {
+  if (_cosReasonsCache && Array.isArray(_cosReasonsCache) && _cosReasonsCache.length) {
+    return _cosReasonsCache.slice();
+  }
+  // Fall back to localStorage if DB hasn't loaded yet
+  try {
+    const raw = localStorage.getItem(COS_REASONS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length) return parsed.slice();
+    }
+  } catch (e) { /* ignore */ }
+  return DEFAULT_COS_REASONS.slice();
+}
+
+// Async: loads reasons from Supabase app_settings table and caches it.
+// Called on app startup. Falls back to localStorage if DB fails.
+async function syncCOSReasons() {
+  try {
+    const { data, error } = await It.from("app_settings").select("value").eq("key", "cos_reasons").single();
+    if (!error && data && data.value && Array.isArray(data.value)) {
+      _cosReasonsCache = data.value.filter(r => typeof r === "string" && r.trim());
+      // Also update localStorage as backup
+      localStorage.setItem(COS_REASONS_KEY, JSON.stringify(_cosReasonsCache));
+      // Notify any open components to refresh their dropdowns
+      try { window.dispatchEvent(new Event("cos-reasons-changed")) } catch (e) {}
+      return;
+    }
+  } catch (e) { /* fall back to localStorage */ }
+  _cosReasonsCache = getCOSReasons();
+}
+
+// Save the full reasons list to Supabase + localStorage and update the cache.
+async function saveCOSReasons(reasons) {
+  const clean = (reasons || [])
+    .map(r => typeof r === "string" ? r.trim() : "")
+    .filter(Boolean);
+  // De-duplicate (case-insensitive) while preserving order
+  const seen = new Set();
+  const deduped = [];
+  for (const r of clean) {
+    const key = r.toLowerCase();
+    if (!seen.has(key)) { seen.add(key); deduped.push(r); }
+  }
+  // Save to localStorage (immediate, for this browser)
+  localStorage.setItem(COS_REASONS_KEY, JSON.stringify(deduped));
+  _cosReasonsCache = deduped.slice();
+  // Save to Supabase (syncs to all users/browsers)
+  const { error } = await It.from("app_settings").upsert({
+    key: "cos_reasons",
+    value: deduped,
+    updated_at: new Date().toISOString()
+  }, { onConflict: "key" });
+  if (error) {
+    console.warn("Failed to sync COS reasons to DB:", error.message);
+    // Still return true since localStorage worked
+  }
+  try { window.dispatchEvent(new Event("cos-reasons-changed")) } catch (e) {}
+  return deduped;
+}
+
+// Convenience: add a single new reason (no-op if duplicate).
+async function addCOSReason(reason) {
+  const list = getCOSReasons();
+  const trimmed = (reason || "").trim();
+  if (!trimmed) return list;
+  const exists = list.some(r => r.toLowerCase() === trimmed.toLowerCase());
+  if (!exists) list.push(trimmed);
+  return await saveCOSReasons(list);
+}
+
+// Convenience: remove a reason by exact match (case-sensitive).
+async function removeCOSReason(reason) {
+  const list = getCOSReasons().filter(r => r !== reason);
+  return await saveCOSReasons(list);
 }
 
 // ============================================================================
@@ -58225,10 +58513,28 @@ function il({
 // ============================================================================
 // Change of Status — MO page (form + read-only "My Request" table)
 // ============================================================================
-const COS_REASONS = ["bad printer", "bad card chip", "bad charging port", "damage part", "faulty button", "not powering on", "software error", "hanging", "screen discoloration", "broken screen", "severe damage(multiple damages)"];
+// Default reasons are defined in DEFAULT_COS_REASONS (data layer).
+// Admins can manage the live list from /admin/cos-reasons — stored in
+// app_settings.cos_reasons. The hook below subscribes to changes.
+
+function useCOSReasons() {
+  const [reasons, setReasons] = E.useState(() => getCOSReasons());
+  E.useEffect(() => {
+    const refresh = () => setReasons(getCOSReasons());
+    refresh();
+    window.addEventListener("cos-reasons-changed", refresh);
+    window.addEventListener("storage", refresh);
+    return () => {
+      window.removeEventListener("cos-reasons-changed", refresh);
+      window.removeEventListener("storage", refresh);
+    };
+  }, []);
+  return reasons;
+}
 
 function ChangeOfStatusPage() {
   const { user: e } = Qn();
+  const cosReasons = useCOSReasons();
   const [sn, setSn] = E.useState("");
   const [reason, setReason] = E.useState("");
   const [requests, setRequests] = E.useState([]);
@@ -58381,7 +58687,7 @@ function ChangeOfStatusPage() {
                 children: m.jsx(Yn, { placeholder: "Select reason..." })
               }), m.jsxs(Xn, {
                 children: [m.jsx(ft, { value: "none", children: "— Select Reason —" }),
-                  COS_REASONS.map(r => m.jsx(ft, { value: r, children: r }, r))]
+                  cosReasons.map(r => m.jsx(ft, { value: r, children: r }, r))]
               })]
             })]
           })]
@@ -58451,7 +58757,7 @@ function ChangeOfStatusPage() {
                     children: m.jsx(Yn, { placeholder: "Reason..." })
                   }), m.jsxs(Xn, {
                     children: [m.jsx(ft, { value: "none", children: "— Select —" }),
-                      COS_REASONS.map(r => m.jsx(ft, { value: r, children: r }, r))]
+                      cosReasons.map(r => m.jsx(ft, { value: r, children: r }, r))]
                   })]
                 })]
               }, idx))
@@ -60897,6 +61203,9 @@ function Vz() {
               }), m.jsx(Lt, {
                 path: "preview-tasks",
                 element: m.jsx(ptmComponent, {})
+              }), m.jsx(Lt, {
+                path: "cos-reasons",
+                element: m.jsx(COSReasonsManager, {})
               })]
             })
           })
