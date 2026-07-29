@@ -58823,23 +58823,87 @@ function SupervisorRequestTable() {
   const { user: e, assignedMarkets } = Qn();
   const isManager = e?.role === "mo_po_manager";
   const [requests, setRequests] = E.useState([]);
+  const [markets, setMarkets] = E.useState([]);
   const [loading, setLoading] = E.useState(!0);
   const [updating, setUpdating] = E.useState({});
   const [filterStatus, setFilterStatus] = E.useState("all");
   const [copying, setCopying] = E.useState(!1);
+  const [searchSn, setSearchSn] = E.useState("");
+  const [dateFrom, setDateFrom] = E.useState("");
+  const [dateTo, setDateTo] = E.useState("");
 
-  // The supervisor's assigned market IDs — requests are scoped to these markets.
-  // Managers see ALL requests (no market filtering).
+  // ==========================================================================
+  // STRICT REGION-BASED ACCESS CONTROL
+  // ==========================================================================
+  // A supervisor may ONLY see change-of-status requests whose submitter's
+  // market satisfies ALL of these conditions:
+  //   1. The submitter has a non-empty market_id
+  //   2. That market_id is in THIS supervisor's assigned markets set
+  //   3. That market's region is in THIS supervisor's allowed regions set
+  //
+  // This is DEFENSE IN DEPTH: we check BOTH market_id membership AND region
+  // match. If either check fails, the request is hidden — no exceptions.
+  // This catches the case where an admin mistakenly assigns a market from
+  // another region to this supervisor.
+  //
+  // CRITICAL: A supervisor with NO assigned markets sees NOTHING (not
+  // everything). Previously, an unassigned supervisor could see all requests
+  // — that security hole is now closed.
+  //
+  // Managers (mo_po_manager) bypass this scoping and see all requests, which
+  // is intended — they oversee all regions.
+  // ==========================================================================
+
+  // The supervisor's assigned market IDs (from auth context)
   const myMarketIds = E.useMemo(() => new Set((assignedMarkets || []).map(mk => mk.id)), [assignedMarkets]);
+
+  // The supervisor's allowed regions (derived from assigned markets)
+  const myRegions = E.useMemo(() => {
+    const set = new Set();
+    (assignedMarkets || []).forEach(mk => { if (mk && mk.region) set.add(mk.region); });
+    return set;
+  }, [assignedMarkets]);
+
+  // Whether this supervisor is missing market assignments (for warning banner)
+  const noMarketsAssigned = !isManager && myMarketIds.size === 0;
+
+  // Lookup map: market_id -> market object (for region/name resolution)
+  const marketsById = E.useMemo(() => {
+    const map = new Map();
+    markets.forEach(mk => map.set(mk.id, mk));
+    return map;
+  }, [markets]);
 
   const load = async () => {
     setLoading(!0);
     try {
-      const all = await fetchAllChangeOfStatus();
-      // Managers see all requests; supervisors only see requests from their assigned markets
-      const scoped = (isManager || myMarketIds.size === 0)
-        ? all
-        : all.filter(r => r.user?.market_id && myMarketIds.has(r.user.market_id));
+      const [all, mkts] = await Promise.all([fetchAllChangeOfStatus(), za()]);
+      const allMarkets = mkts || [];
+      setMarkets(allMarkets);
+
+      let scoped;
+      if (isManager) {
+        // Managers oversee ALL regions — no scoping
+        scoped = all;
+      } else {
+        // Supervisors: STRICT region enforcement.
+        // A request is visible ONLY if ALL three conditions pass:
+        //   (a) submitter has a market_id
+        //   (b) that market_id is in this supervisor's assigned set
+        //   (c) that market's region is in this supervisor's region set
+        // ANY failure → request is hidden. No fallback to "show all".
+        scoped = all.filter(r => {
+          const mid = r.user?.market_id;
+          if (!mid) return false;                   // (a) unknown market → hide
+          if (!myMarketIds.has(mid)) return false;  // (b) not assigned to me → hide
+          const mk = allMarkets.find(m => m.id === mid);
+          if (!mk) return false;                    // market record missing → hide
+          const reg = mk.region || "";
+          if (!reg) return false;                   // market has no region → hide
+          if (!myRegions.has(reg)) return false;    // (c) region mismatch → hide
+          return true;
+        });
+      }
       setRequests(scoped);
     } catch (err) {
       console.error("Failed to load requests:", err);
@@ -58848,7 +58912,7 @@ function SupervisorRequestTable() {
     }
   };
 
-  E.useEffect(() => { load() }, [myMarketIds.size]);
+  E.useEffect(() => { load() }, [myMarketIds.size, myRegions.size]);
 
   const handleStatusChange = async (id, newStatus) => {
     setUpdating(prev => ({ ...prev, [id]: !0 }));
@@ -58872,8 +58936,40 @@ function SupervisorRequestTable() {
     return styles[s] || "bg-gray-100 text-gray-600 border-gray-200";
   };
 
-  // Apply status filter
-  const filtered = filterStatus === "all" ? requests : requests.filter(r => r.status === filterStatus);
+  // Resolve the region name for a request (via the submitter's market_id)
+  const regionOf = (r) => {
+    const mid = r.user?.market_id;
+    if (!mid) return "";
+    const mk = marketsById.get(mid);
+    return mk?.region || mk?.name || "";
+  };
+
+  // Apply all filters: status + SN search + date range
+  const filtered = requests.filter(r => {
+    if (filterStatus !== "all" && r.status !== filterStatus) return false;
+    const q = searchSn.trim().toLowerCase();
+    if (q && !String(r.sn || "").toLowerCase().includes(q)) return false;
+    if (dateFrom || dateTo) {
+      const d = new Date(r.created_at);
+      if (dateFrom) {
+        const from = new Date(dateFrom + "T00:00:00");
+        if (d < from) return false;
+      }
+      if (dateTo) {
+        const to = new Date(dateTo + "T23:59:59");
+        if (d > to) return false;
+      }
+    }
+    return true;
+  });
+
+  const hasActiveFilters = filterStatus !== "all" || searchSn.trim() || dateFrom || dateTo;
+  const clearFilters = () => {
+    setFilterStatus("all");
+    setSearchSn("");
+    setDateFrom("");
+    setDateTo("");
+  };
 
   // Copy all filtered SN + Reason to clipboard
   const copyFiltered = async () => {
@@ -58907,9 +59003,33 @@ function SupervisorRequestTable() {
         children: [m.jsx(ao, { className: "text-emerald-600", size: 22 }), "Request Table"]
       }), m.jsx("p", {
         className: "text-xs text-gray-400 mt-1",
-        children: "All change-of-status requests submitted by MOs and POs"
+        children: isManager
+          ? "All change-of-status requests submitted by MOs and POs (all regions — manager view)"
+          : "Change-of-status requests from your assigned regions only — requests from other regions are hidden"
       })]
     }),
+
+    // Scope / warning banner
+    noMarketsAssigned ? m.jsxs("div", {
+      className: "bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3",
+      children: [m.jsx(d2, { className: "text-red-500 shrink-0 mt-0.5", size: 18 }),
+        m.jsxs("div", {
+          children: [m.jsx("p", {
+            className: "text-sm font-bold text-red-700",
+            children: "No markets assigned"
+          }), m.jsx("p", {
+            className: "text-xs text-red-600 mt-1 leading-relaxed",
+            children: "You have no markets assigned to your account, so no change-of-status requests are visible to you. Contact an admin to assign markets in your region."
+            })]
+        })]
+    }) : (!isManager && myRegions.size > 0 && m.jsxs("div", {
+      className: "bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center gap-2",
+      children: [m.jsx(ys, { className: "text-emerald-500 shrink-0", size: 16 }),
+        m.jsxs("p", {
+          className: "text-xs text-emerald-700 font-medium",
+          children: ["Region access: ", Array.from(myRegions).join(", ")]
+        })]
+    })),
 
     // Summary cards
     m.jsxs("div", {
@@ -58926,34 +59046,82 @@ function SupervisorRequestTable() {
       })]
     }),
 
-    // Filters bar: status filter + copy button
+    // Filters bar: search + status + date range + copy button
     m.jsxs(Je, {
       className: "p-4",
       children: [m.jsxs("div", {
-        className: "flex flex-wrap items-end gap-3 justify-between",
-        children: [m.jsxs("div", {
-          className: "flex flex-col gap-1",
-          children: [m.jsx(Qe, { className: "text-[10px] font-bold text-gray-400 uppercase", children: "Filter by Status" }), m.jsxs(qn, {
-            value: filterStatus,
-            onValueChange: v => setFilterStatus(v),
-            children: [m.jsx(Kn, { children: m.jsx(Yn, { placeholder: "All Statuses" }) }), m.jsxs(Xn, {
-              children: [m.jsx(ft, { value: "all", children: "All Statuses" }), m.jsx(ft, { value: "Pending", children: "Pending" }), m.jsx(ft, { value: "Applied", children: "Applied" }), m.jsx(ft, { value: "Done", children: "Done" })]
+        className: "flex flex-col gap-3",
+        children: [
+          // Row 1: SN search + status filter
+          m.jsxs("div", {
+            className: "flex flex-wrap items-end gap-3 justify-between",
+            children: [m.jsxs("div", {
+              className: "flex flex-col gap-1",
+              children: [m.jsx(Qe, { className: "text-[10px] font-bold text-gray-400 uppercase", children: "Search SN" }), m.jsxs("div", {
+                className: "relative",
+                children: [m.jsx(uj, { size: 14, className: "absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" }), m.jsx(yt, {
+                  value: searchSn,
+                  onChange: t => setSearchSn(t.target.value),
+                  placeholder: "e.g. SN-001234",
+                  className: "pl-8 w-56 h-9 text-xs"
+                })]
+              })]
+            }), m.jsxs("div", {
+              className: "flex flex-col gap-1",
+              children: [m.jsx(Qe, { className: "text-[10px] font-bold text-gray-400 uppercase", children: "Filter by Status" }), m.jsxs(qn, {
+                value: filterStatus,
+                onValueChange: v => setFilterStatus(v),
+                children: [m.jsx(Kn, { children: m.jsx(Yn, { placeholder: "All Statuses" }) }), m.jsxs(Xn, {
+                  children: [m.jsx(ft, { value: "all", children: "All Statuses" }), m.jsx(ft, { value: "Pending", children: "Pending" }), m.jsx(ft, { value: "Applied", children: "Applied" }), m.jsx(ft, { value: "Done", children: "Done" })]
+                })]
+              })]
             })]
-          })]
-        }), m.jsxs("div", {
-          className: "flex items-center gap-2",
-          children: [m.jsxs("span", {
-            className: "text-[10px] text-gray-400 font-bold uppercase",
-            children: [filtered.length, " of ", requests.length, " requests"]
-          }), filtered.length > 0 && m.jsxs(ht, {
-            size: "sm",
-            variant: "outline",
-            onClick: copyFiltered,
-            disabled: copying,
-            className: "text-xs border-blue-200 text-blue-600 hover:bg-blue-50",
-            children: [m.jsx(cp2, { size: 12, className: "mr-1" }), copying ? "Copying..." : "Copy SN + Reason"]
-          })]
-        })]
+          }),
+
+          // Row 2: Date range + clear + copy
+          m.jsxs("div", {
+            className: "flex flex-wrap items-end gap-3 justify-between",
+            children: [m.jsxs("div", {
+              className: "flex flex-wrap items-end gap-3",
+              children: [m.jsxs("div", {
+                className: "flex flex-col gap-1",
+                children: [m.jsx(Qe, { className: "text-[10px] font-bold text-gray-400 uppercase", children: "From Date" }), m.jsx(yt, {
+                  type: "date",
+                  value: dateFrom,
+                  onChange: t => setDateFrom(t.target.value),
+                  className: "h-9 w-40 text-xs"
+                })]
+              }), m.jsxs("div", {
+                className: "flex flex-col gap-1",
+                children: [m.jsx(Qe, { className: "text-[10px] font-bold text-gray-400 uppercase", children: "To Date" }), m.jsx(yt, {
+                  type: "date",
+                  value: dateTo,
+                  onChange: t => setDateTo(t.target.value),
+                  className: "h-9 w-40 text-xs"
+                })]
+              }), hasActiveFilters && m.jsx(ht, {
+                size: "sm",
+                variant: "outline",
+                onClick: clearFilters,
+                className: "text-xs border-gray-200 text-gray-500 hover:bg-gray-50 h-9",
+                children: "Clear Filters"
+              })]
+            }), m.jsxs("div", {
+              className: "flex items-center gap-2",
+              children: [m.jsxs("span", {
+                className: "text-[10px] text-gray-400 font-bold uppercase",
+                children: [filtered.length, " of ", requests.length, " requests"]
+              }), filtered.length > 0 && m.jsxs(ht, {
+                size: "sm",
+                variant: "outline",
+                onClick: copyFiltered,
+                disabled: copying,
+                className: "text-xs border-blue-200 text-blue-600 hover:bg-blue-50",
+                children: [m.jsx(cp2, { size: 12, className: "mr-1" }), copying ? "Copying..." : "Copy SN + Reason"]
+              })]
+            })]
+          })
+        ]
       })]
     }),
 
@@ -58968,7 +59136,7 @@ function SupervisorRequestTable() {
         children: Array.from({ length: 5 }).map((_, i) => m.jsx(Zn, { className: "h-12" }, i))
       }) : filtered.length === 0 ? m.jsx("p", {
         className: "text-sm text-gray-400 text-center py-8",
-        children: requests.length === 0 ? "No requests submitted yet" : "No requests match the selected status"
+        children: requests.length === 0 ? "No requests submitted yet" : (hasActiveFilters ? "No requests match your filters — try clearing them" : "No requests match the selected status")
       }) : m.jsx("div", {
         className: "overflow-x-auto",
         children: m.jsxs("table", {
@@ -58976,12 +59144,12 @@ function SupervisorRequestTable() {
           children: [m.jsx("thead", {
             children: m.jsxs("tr", {
               className: "border-b border-gray-200 text-left",
-              children: [m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "SN" }), m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Reason" }), m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "MO Name" }), m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Status" }), m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Date Submitted" }), m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Update Status" })]
+              children: [m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "SN" }), m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Reason" }), m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "MO Name" }), m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Region" }), m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Status" }), m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Date Submitted" }), m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Update Status" })]
             })
           }), m.jsx("tbody", {
             children: filtered.map(r => m.jsxs("tr", {
               className: "border-b border-gray-100 hover:bg-gray-50",
-              children: [m.jsx("td", { className: "py-2.5 px-3 font-mono text-xs text-gray-700", children: r.sn }), m.jsx("td", { className: "py-2.5 px-3 text-gray-700", children: r.reason }), m.jsx("td", { className: "py-2.5 px-3 text-gray-700", children: r.user?.name || "Unknown" }), m.jsx("td", { className: "py-2.5 px-3", children: m.jsx("span", { className: `text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${statusBadge(r.status)}`, children: r.status }) }), m.jsx("td", { className: "py-2.5 px-3 text-[11px] text-gray-400", children: new Date(r.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) }), m.jsx("td", { className: "py-2.5 px-3", children: m.jsxs("div", { className: "flex items-center gap-1", children: [
+              children: [m.jsx("td", { className: "py-2.5 px-3 font-mono text-xs text-gray-700", children: r.sn }), m.jsx("td", { className: "py-2.5 px-3 text-gray-700", children: r.reason }), m.jsx("td", { className: "py-2.5 px-3 text-gray-700", children: r.user?.name || "Unknown" }), m.jsx("td", { className: "py-2.5 px-3 text-[11px] text-gray-500", children: regionOf(r) || "—" }), m.jsx("td", { className: "py-2.5 px-3", children: m.jsx("span", { className: `text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${statusBadge(r.status)}`, children: r.status }) }), m.jsx("td", { className: "py-2.5 px-3 text-[11px] text-gray-400", children: new Date(r.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) }), m.jsx("td", { className: "py-2.5 px-3", children: m.jsxs("div", { className: "flex items-center gap-1", children: [
                   ["Pending", "Applied", "Done"].map(s => m.jsx("button", {
                     onClick: () => r.status !== s && handleStatusChange(r.id, s),
                     disabled: r.status === s || updating[r.id],
