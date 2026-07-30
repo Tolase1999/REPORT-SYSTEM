@@ -27241,6 +27241,7 @@ const _j = [
     Database: ig,
     Shield: au,
     ClipboardList: ao,
+    ClipboardCheck: ys,
     Trophy: Pa,
     FileText: qi,
     BarChart3: Ad,
@@ -27327,6 +27328,11 @@ const _j = [
     label: "Request Table",
     icon: "RefreshCw",
     path: "/mo-supervisor/requests",
+    roles: ["mo_supervisor"]
+  }, {
+    label: "Report Verification",
+    icon: "ClipboardCheck",
+    path: "/mo-supervisor/verify-reports",
     roles: ["mo_supervisor"]
   }, {
     label: "PO Reports",
@@ -27437,6 +27443,11 @@ const _j = [
     label: "Request Table",
     icon: "RefreshCw",
     path: "/mo-po-manager/requests",
+    roles: ["mo_po_manager"]
+  }, {
+    label: "Report Verification",
+    icon: "ClipboardCheck",
+    path: "/mo-po-manager/verify-reports",
     roles: ["mo_po_manager"]
   }];
 
@@ -37036,6 +37047,130 @@ async function addCOSReason(reason) {
 async function removeCOSReason(reason) {
   const list = getCOSReasons().filter(r => r !== reason);
   return await saveCOSReasons(list);
+}
+
+// ============================================================================
+// Report Verification — Remarks
+// ============================================================================
+// Supervisors and MO/PO Managers can leave a free-text remark on each MO or
+// PO daily report at close of business. Remarks are stored in the
+// report_remark table (one row per report) and accessed via SECURITY DEFINER
+// RPC functions that enforce region-based access control server-side.
+//
+// Region enforcement is mirrored client-side in ReportVerificationPage for
+// UX, but the database is the source of truth — even if the client is
+// bypassed, the RPC refuses to return/save remarks outside the user's region.
+// ============================================================================
+
+// Fetch all remarks for a given date that the user is authorized to see.
+// Returns an object keyed by `${report_type}:${report_id}` for fast lookup.
+async function fetchReportRemarksByDate(userId, dateStr) {
+  const { data, error } = await It.rpc("get_report_remarks_by_date", {
+    p_user_id: userId,
+    p_date: dateStr
+  });
+  if (error) throw new Error(`Failed to fetch remarks: ${error.message}`);
+  const map = {};
+  (data || []).forEach(r => {
+    map[`${r.report_type}:${r.report_id}`] = r;
+  });
+  return map;
+}
+
+// Save (upsert) a remark for a specific report.
+// reportType: "MO" or "PO"
+// reportId: UUID of the reports.id or po_reports.id row
+// remark: free-text string
+async function saveReportRemark({
+  userId, reportType, reportId, reportDate,
+  submitterId, marketId, remark
+}) {
+  const { data, error } = await It.rpc("save_report_remark", {
+    p_user_id: userId,
+    p_report_type: reportType,
+    p_report_id: reportId,
+    p_report_date: reportDate,
+    p_submitter_id: submitterId,
+    p_market_id: marketId || null,
+    p_remark: remark || ""
+  });
+  if (error) throw new Error(`Failed to save remark: ${error.message}`);
+  return data;
+}
+
+// Fetch MO + PO reports submitted on a given date, scoped to the user's
+// access (managers see all; supervisors see only their assigned regions).
+// Returns { mo: [...], po: [...] } where each item has the 4 stock totals
+// extracted for verification.
+async function fetchVerificationReports(scope, dateStr, assignedMarkets) {
+  // MO reports: use the existing Pl() helper which already respects scope
+  // (allowedMarketIds / allowedUserIds) and joins user + market.
+  const moReports = await Pl(scope, dateStr);
+
+  // PO reports: fetch by date range, then filter by region (same logic as
+  // supervisor scope — managers bypass).
+  const nextDay = new Date(dateStr + "T12:00:00");
+  nextDay.setDate(nextDay.getDate() + 1);
+  const nextDayStr = nextDay.toISOString().split("T")[0];
+  const { data: poRows, error: poErr } = await It.from("po_reports")
+    .select("*, user:user_id(id, name, code, market_id, role), market:market_id(id, name, city, region, team)")
+    .gte("date", dateStr)
+    .lt("date", nextDayStr)
+    .order("submitted_at", { ascending: false });
+  if (poErr) throw new Error(`Failed to fetch PO reports: ${poErr.message}`);
+
+  // Build region lookup from assignedMarkets (for supervisor region filter)
+  const myMarketIds = new Set((assignedMarkets || []).map(mk => mk.id));
+  const myRegions = new Set();
+  (assignedMarkets || []).forEach(mk => { if (mk && mk.region) myRegions.add(mk.region); });
+  const isManager = scope.canViewAllStaff; // managers have canViewAllStaff = true
+
+  // Filter PO reports by region for supervisors (managers see all)
+  const poReports = (poRows || []).filter(r => {
+    if (isManager) return true;
+    const mid = r.user?.market_id || r.market_id;
+    if (!mid || !myMarketIds.has(mid)) return false;
+    const reg = r.market?.region || "";
+    if (!reg || !myRegions.has(reg)) return false;
+    return true;
+  });
+
+  return { mo: moReports, po: poReports };
+}
+
+// Extract the 4 stock breakdowns from a MO report (using readMOPOSField).
+// Returns { newStock, repairedStock, rrStock, faulty } where each is
+// { smart, tpos, mpos, total } — the full Smart/TPOS/MPOS/Total breakdown.
+function extractMOStockTotals(report, tasks) {
+  const data = report.data || report;
+  const sn = readMOPOSField(data, tasks, "stock_new");
+  const sr = readMOPOSField(data, tasks, "stock_rep");
+  const srr = readMOPOSField(data, tasks, "stock_rr");
+  const fl = readMOPOSField(data, tasks, "faulty");
+  const norm = (v) => ({ smart: v?.smart || 0, tpos: v?.tpos || 0, mpos: v?.mpos || 0, total: v?.total || 0 });
+  return {
+    newStock: norm(sn),
+    repairedStock: norm(sr),
+    rrStock: norm(srr),
+    faulty: norm(fl)
+  };
+}
+
+// Extract the 4 stock breakdowns from a PO report (data is nested in .data).
+// PO reports store stock as { smart, tpos, mpos, total } per field.
+function extractPOStockTotals(report) {
+  const d = report.data || {};
+  const bs = d.brand_new_stock || {};
+  const rs = d.repaired_stock || {};
+  const rr = d.rr_stock || {};
+  const tf = d.total_faulty || {};
+  const norm = (v) => ({ smart: v?.smart || 0, tpos: v?.tpos || 0, mpos: v?.mpos || 0, total: v?.total || 0 });
+  return {
+    newStock: norm(bs),
+    repairedStock: norm(rs),
+    rrStock: norm(rr),
+    faulty: norm(tf)
+  };
 }
 
 // ============================================================================
@@ -59181,6 +59316,560 @@ function SupervisorRequestTable() {
 
 
 // ============================================================================
+// Report Verification — Supervisor / MO-PO Manager panel
+// ============================================================================
+// Shows MO and PO reports submitted on a given date (default: today) for the
+// user's accessible regions. Only 4 stock columns are shown:
+//   New Stock | Repaired Stock | R&R Stock | Faulty
+// Each row has a free-text Remark input + Save button. Remarks are persisted
+// to the report_remark table via SECURITY DEFINER RPC (region-enforced).
+//
+// Region access control mirrors SupervisorRequestTable:
+//   - Managers (mo_po_manager) see all reports across all regions.
+//   - Supervisors (mo_supervisor) see only reports from their assigned
+//     markets AND matching regions (defense in depth).
+//   - A supervisor with no assigned markets sees nothing + a warning banner.
+// ============================================================================
+
+function ReportVerificationPage() {
+  const { user: e, assignedMarkets, accessScope } = Qn();
+  const isManager = e?.role === "mo_po_manager";
+
+  // Default date = today (close-of-business verification)
+  const [dateStr, setDateStr] = E.useState(() => new Date().toISOString().split("T")[0]);
+  const [tasks, setTasks] = E.useState([]);
+  const [markets, setMarkets] = E.useState([]);
+  const [moReports, setMoReports] = E.useState([]);
+  const [poReports, setPoReports] = E.useState([]);
+  const [remarks, setRemarks] = E.useState({});          // keyed "TYPE:id"
+  const [remarkDrafts, setRemarkDrafts] = E.useState({}); // local textarea state
+  const [saving, setSaving] = E.useState({});             // keyed "TYPE:id"
+  const [loading, setLoading] = E.useState(!0);
+  const [filterType, setFilterType] = E.useState("all");  // all | MO | PO
+
+  // Region sets (same logic as SupervisorRequestTable)
+  const myMarketIds = E.useMemo(() => new Set((assignedMarkets || []).map(mk => mk.id)), [assignedMarkets]);
+  const myRegions = E.useMemo(() => {
+    const set = new Set();
+    (assignedMarkets || []).forEach(mk => { if (mk && mk.region) set.add(mk.region); });
+    return set;
+  }, [assignedMarkets]);
+  const noMarketsAssigned = !isManager && myMarketIds.size === 0;
+
+  // Markets lookup (for region resolution per report)
+  const marketsById = E.useMemo(() => {
+    const map = new Map();
+    markets.forEach(mk => map.set(mk.id, mk));
+    return map;
+  }, [markets]);
+
+  // Resolve region for a report (MO or PO)
+  const regionOf = (marketId) => {
+    if (!marketId) return "";
+    const mk = marketsById.get(marketId);
+    return mk?.region || mk?.name || "";
+  };
+
+  const load = async () => {
+    if (!e) return;
+    setLoading(!0);
+    try {
+      const [allTasks, allMarkets] = await Promise.all([ph(), za()]);
+      setTasks(allTasks || []);
+      setMarkets(allMarkets || []);
+
+      const scope = accessScope || {
+        canViewMO: !0, canViewMS: !0,
+        canViewAllMarkets: isManager, canViewAllStaff: isManager,
+        allowedMarketIds: isManager ? [] : Array.from(myMarketIds),
+        allowedUserIds: [],
+        canManage: isManager, canSubmitReports: !1
+      };
+      const { mo, po } = await fetchVerificationReports(scope, dateStr, assignedMarkets);
+      setMoReports(mo || []);
+      setPoReports(po || []);
+
+      const remarksMap = await fetchReportRemarksByDate(e.id, dateStr);
+      setRemarks(remarksMap);
+      const drafts = {};
+      Object.entries(remarksMap).forEach(([key, r]) => { drafts[key] = r.remark || ""; });
+      setRemarkDrafts(drafts);
+    } catch (err) {
+      console.error("Failed to load verification data:", err);
+      ui.error(err.message || "Failed to load reports");
+    } finally {
+      setLoading(!1);
+    }
+  };
+
+  E.useEffect(() => { load() }, [dateStr, e?.id, myMarketIds.size, myRegions.size]);
+
+  // Build unified row list. Each stock field is { smart, tpos, mpos, total }.
+  const rows = E.useMemo(() => {
+    const out = [];
+    (moReports || []).forEach(r => {
+      if (r.type !== "MO") return;
+      const totals = extractMOStockTotals(r, tasks);
+      out.push({
+        type: "MO",
+        id: r.id,
+        date: r.date,
+        userName: r.user?.name || "Unknown",
+        submitterId: r.user_id,
+        marketId: r.market_id,
+        region: regionOf(r.market_id),
+        ...totals
+      });
+    });
+    (poReports || []).forEach(r => {
+      const totals = extractPOStockTotals(r);
+      out.push({
+        type: "PO",
+        id: r.id,
+        date: r.date,
+        userName: r.user?.name || "Unknown",
+        submitterId: r.user_id,
+        marketId: r.market_id,
+        region: regionOf(r.user?.market_id || r.market_id),
+        ...totals
+      });
+    });
+    return out;
+  }, [moReports, poReports, tasks, marketsById]);
+
+  const filteredRows = filterType === "all" ? rows : rows.filter(r => r.type === filterType);
+
+  const handleSaveRemark = async (row) => {
+    const key = `${row.type}:${row.id}`;
+    const text = (remarkDrafts[key] ?? "").trim();
+    setSaving(prev => ({ ...prev, [key]: !0 }));
+    try {
+      const saved = await saveReportRemark({
+        userId: e.id,
+        reportType: row.type,
+        reportId: row.id,
+        reportDate: row.date,
+        submitterId: row.submitterId,
+        marketId: row.marketId,
+        remark: text
+      });
+      setRemarks(prev => ({ ...prev, [key]: saved }));
+      ui.success("Remark saved");
+    } catch (err) {
+      ui.error(err.message || "Failed to save remark");
+    } finally {
+      setSaving(prev => ({ ...prev, [key]: !1 }));
+    }
+  };
+
+  const updateDraft = (key, text) => {
+    setRemarkDrafts(prev => ({ ...prev, [key]: text }));
+  };
+
+  // Summary counts
+  const summary = {
+    total: rows.length,
+    mo: rows.filter(r => r.type === "MO").length,
+    po: rows.filter(r => r.type === "PO").length,
+    remarked: Object.keys(remarks).length,
+    pending: rows.length - Object.keys(remarks).length
+  };
+
+  // Map of card DOM elements keyed by `${type}:${id}` — used for screenshots.
+  // We use a ref-object Map instead of calling useRef inside .map() (which
+  // would violate React's Rules of Hooks and cause error #310).
+  const cardElements = E.useRef({});
+
+  // Helper: render a single stock breakdown mini-card.
+  // Uses INLINE STYLES for the header bar to guarantee text visibility
+  // regardless of Tailwind's bg-opacity behavior.
+  // data = { smart, tpos, mpos, total }
+  // theme = "purple" | "blue" | "orange" | "red"
+  const renderStockCard = (label, data, theme) => {
+    const themes = {
+      purple: { headerBg: "#7c3aed", headerText: "#ffffff", cardBg: "#faf5ff", borderColor: "#ddd6fe", labelText: "#6d28d9" },
+      blue:   { headerBg: "#2563eb", headerText: "#ffffff", cardBg: "#eff6ff", borderColor: "#bfdbfe", labelText: "#1d4ed8" },
+      orange: { headerBg: "#ea580c", headerText: "#ffffff", cardBg: "#fff7ed", borderColor: "#fed7aa", labelText: "#c2410c" },
+      red:    { headerBg: "#dc2626", headerText: "#ffffff", cardBg: "#fef2f2", borderColor: "#fecaca", labelText: "#b91c1c" }
+    };
+    const t = themes[theme] || themes.purple;
+    return m.jsxs("div", {
+      style: { backgroundColor: t.cardBg, border: `2px solid ${t.borderColor}`, borderRadius: "12px", overflow: "hidden" },
+      children: [
+        // Header bar — solid background + white text via inline style (guaranteed visible)
+        m.jsxs("div", {
+          style: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 12px", backgroundColor: t.headerBg },
+          children: [
+            m.jsx("span", { style: { fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: t.headerText }, children: label }),
+            m.jsx("span", { style: { fontSize: "10px", fontWeight: 800, color: t.headerText, backgroundColor: "rgba(0,0,0,0.25)", borderRadius: "4px", padding: "1px 6px" }, children: data.total })
+          ]
+        }),
+        // Breakdown grid: Smart / TPOS / MPOS
+        m.jsx("div", {
+          style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr" },
+          children: [
+            m.jsxs("div", {
+              style: { padding: "6px 8px", textAlign: "center", backgroundColor: "rgba(255,255,255,0.7)", borderRight: "1px solid rgba(0,0,0,0.06)" },
+              children: [m.jsx("p", { style: { fontSize: "8px", fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", margin: 0 }, children: "Smart" }), m.jsx("p", { style: { fontSize: "14px", fontWeight: 700, color: "#374151", margin: 0 }, children: data.smart })]
+            }),
+            m.jsxs("div", {
+              style: { padding: "6px 8px", textAlign: "center", backgroundColor: "rgba(255,255,255,0.7)", borderRight: "1px solid rgba(0,0,0,0.06)" },
+              children: [m.jsx("p", { style: { fontSize: "8px", fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", margin: 0 }, children: "TPOS" }), m.jsx("p", { style: { fontSize: "14px", fontWeight: 700, color: "#374151", margin: 0 }, children: data.tpos })]
+            }),
+            m.jsxs("div", {
+              style: { padding: "6px 8px", textAlign: "center", backgroundColor: "rgba(255,255,255,0.7)" },
+              children: [m.jsx("p", { style: { fontSize: "8px", fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", margin: 0 }, children: "MPOS" }), m.jsx("p", { style: { fontSize: "14px", fontWeight: 700, color: "#374151", margin: 0 }, children: data.mpos })]
+            })
+          ]
+        })
+      ]
+    });
+  };
+
+  // Screenshot a card element and download as PNG.
+  // Dynamically loads html2canvas from CDN on first use (keeps the bundle small).
+  const screenshotCard = async (key, filename) => {
+    const cardElement = cardElements.current[key];
+    if (!cardElement) return;
+    try {
+      // Load html2canvas on demand
+      if (!window.html2canvas) {
+        ui.info("Loading screenshot tool...");
+        await new Promise((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
+          script.onload = resolve;
+          script.onerror = () => reject(new Error("Failed to load screenshot library"));
+          document.head.appendChild(script);
+        });
+      }
+      const canvas = await window.html2canvas(cardElement, {
+        backgroundColor: "#ffffff",
+        scale: 2,
+        logging: false,
+        useCORS: true
+      });
+      canvas.toBlob(blob => {
+        if (!blob) { ui.error("Failed to generate image"); return; }
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        ui.success("Screenshot downloaded");
+      }, "image/png");
+    } catch (err) {
+      console.error("Screenshot failed:", err);
+      ui.error("Screenshot failed: " + (err.message || "unknown error"));
+    }
+  };
+
+  // Copy a formatted text summary of a card to the clipboard for quick sharing
+  // via WhatsApp/email/etc.
+  const copyCardSummary = async (row) => {
+    const existing = remarks[`${row.type}:${row.id}`];
+    const remark = (existing?.remark || remarkDrafts[`${row.type}:${row.id}`] || "").trim();
+    const lines = [
+      `Report Verification — ${row.type}`,
+      `Officer: ${row.userName}`,
+      `Region: ${row.region || "—"}`,
+      `Date: ${row.date}`,
+      ``,
+      `Stock Breakdown:`,
+      `  New Stock:      Smart ${row.newStock.smart} · TPOS ${row.newStock.tpos} · MPOS ${row.newStock.mpos} · Total ${row.newStock.total}`,
+      `  Repaired Stock: Smart ${row.repairedStock.smart} · TPOS ${row.repairedStock.tpos} · MPOS ${row.repairedStock.mpos} · Total ${row.repairedStock.total}`,
+      `  R&R Stock:      Smart ${row.rrStock.smart} · TPOS ${row.rrStock.tpos} · MPOS ${row.rrStock.mpos} · Total ${row.rrStock.total}`,
+      `  Faulty:         Smart ${row.faulty.smart} · TPOS ${row.faulty.tpos} · MPOS ${row.faulty.mpos} · Total ${row.faulty.total}`,
+      ``,
+      `Remark: ${remark || "(none)"}`
+    ];
+    const text = lines.join("\n");
+    try {
+      const ok = await copyReportToClipboard(text);
+      ok ? ui.success("Summary copied to clipboard — paste into WhatsApp/email") : ui.info("Copy failed — please copy manually");
+    } catch (err) {
+      ui.error("Failed to copy");
+    }
+  };
+
+  // Helper: render a single report verification card
+  const renderReportCard = (row) => {
+    const key = `${row.type}:${row.id}`;
+    const existing = remarks[key];
+    const draft = remarkDrafts[key] ?? "";
+    const isDirty = draft !== (existing?.remark || "");
+    const isMO = row.type === "MO";
+
+    return m.jsx("div", {
+      ref: el => { if (el) cardElements.current[key] = el; },
+      children: m.jsxs(Je, {
+        className: `overflow-hidden border-l-4 ${isMO ? "border-l-emerald-500" : "border-l-cyan-500"} hover:shadow-md transition-shadow bg-white`,
+      children: [
+        // Card header
+        m.jsxs("div", {
+          className: "flex items-center justify-between p-4 border-b border-gray-100 bg-gray-50/50",
+          children: [
+            m.jsxs("div", {
+              className: "flex items-center gap-3 min-w-0",
+              children: [
+                m.jsx("div", {
+                  className: `w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${isMO ? "bg-emerald-100" : "bg-cyan-100"}`,
+                  children: m.jsx(qi, { className: isMO ? "text-emerald-600" : "text-cyan-600", size: 18 })
+                }),
+                m.jsxs("div", {
+                  className: "min-w-0",
+                  children: [
+                    m.jsxs("div", {
+                      className: "flex items-center gap-2",
+                      children: [
+                        m.jsx("span", { className: `text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full ${isMO ? "bg-emerald-100 text-emerald-700" : "bg-cyan-100 text-cyan-700"}`, children: row.type }),
+                        m.jsx("span", { className: "text-sm font-bold text-gray-800 truncate", children: row.userName })
+                      ]
+                    }),
+                    m.jsxs("p", {
+                      className: "text-[11px] text-gray-500 mt-0.5",
+                      children: [row.region || "—", " · ", row.date]
+                    })
+                  ]
+                })
+              ]
+            }),
+            // Remark status indicator
+            m.jsxs("div", {
+              className: "flex items-center gap-1.5 shrink-0",
+              children: [
+                existing
+                  ? m.jsxs(m.Fragment, { children: [m.jsx(ys, { className: "text-emerald-500", size: 14 }), m.jsx("span", { className: "text-[10px] font-bold text-emerald-600 uppercase", children: "Remark Added" })] })
+                  : m.jsxs(m.Fragment, { children: [m.jsx(o2, { className: "text-amber-500", size: 14 }), m.jsx("span", { className: "text-[10px] font-bold text-amber-600 uppercase", children: "Pending" })] })
+              ]
+            })
+          ]
+        }),
+
+        // Stock breakdown — 4 mini-cards in a responsive grid
+        m.jsx("div", {
+          className: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 p-4",
+          children: [
+            renderStockCard("New Stock", row.newStock, "purple"),
+            renderStockCard("Repaired Stock", row.repairedStock, "blue"),
+            renderStockCard("R&R Stock", row.rrStock, "orange"),
+            renderStockCard("Faulty", row.faulty, "red")
+          ]
+        }),
+
+        // Remark section — input + save + screenshot + copy buttons
+        m.jsxs("div", {
+          className: "p-4 border-t border-gray-100 bg-gray-50/30",
+          children: [
+            m.jsx(yt, {
+              value: draft,
+              onChange: t => updateDraft(key, t.target.value),
+              placeholder: "Type a remark for this report (e.g. verified at close of business, numbers look correct)...",
+              className: "w-full h-10 text-xs mb-2"
+            }),
+            m.jsxs("div", {
+              className: "flex flex-wrap items-center gap-2",
+              children: [
+                // Save / Update remark button
+                m.jsxs(ht, {
+                  size: "sm",
+                  onClick: () => handleSaveRemark(row),
+                  disabled: saving[key] || !isDirty,
+                  className: `h-9 text-xs font-bold ${isDirty ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "bg-gray-100 text-gray-400 cursor-not-allowed"}`,
+                  children: [m.jsx(lj, { size: 14, className: "mr-1" }), saving[key] ? "Saving..." : (existing ? "Update Remark" : "Save Remark")]
+                }),
+                // Screenshot button — downloads a PNG of the card for sharing
+                m.jsxs(ht, {
+                  size: "sm",
+                  variant: "outline",
+                  onClick: () => screenshotCard(key, `verification_${row.type}_${row.userName}_${row.date}.png`.replace(/\s+/g, "_")),
+                  disabled: saving[key],
+                  className: "h-9 text-xs border-purple-200 text-purple-600 hover:bg-purple-50",
+                  title: "Download a screenshot of this card to share with the MO/PO",
+                  children: [m.jsx(cp2, { size: 14, className: "mr-1" }), "Screenshot"]
+                }),
+                // Copy summary button — copies formatted text for WhatsApp/email
+                m.jsxs(ht, {
+                  size: "sm",
+                  variant: "outline",
+                  onClick: () => copyCardSummary(row),
+                  disabled: saving[key],
+                  className: "h-9 text-xs border-blue-200 text-blue-600 hover:bg-blue-50",
+                  title: "Copy a text summary to clipboard for quick sharing",
+                  children: [m.jsx(uj, { size: 14, className: "mr-1" }), "Copy Summary"]
+                })
+              ]
+            })
+          ]
+        })
+      ]
+      })
+    }, key);
+  };
+
+  return m.jsxs("div", {
+    className: "space-y-5",
+    children: [
+      // Page header
+      m.jsxs("div", {
+        children: [m.jsxs("h1", {
+          className: "text-xl font-extrabold text-gray-800 flex items-center gap-2",
+          children: [m.jsx(ao, { className: "text-emerald-600", size: 22 }), "Report Verification"]
+        }), m.jsx("p", {
+          className: "text-xs text-gray-400 mt-1",
+          children: isManager
+            ? "Verify MO and PO stock reports at close of business — all regions (manager view)"
+            : "Verify MO and PO stock reports from your assigned regions — reports from other regions are hidden"
+        })]
+      }),
+
+      // Region banner
+      noMarketsAssigned ? m.jsxs("div", {
+        className: "bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3",
+        children: [m.jsx(d2, { className: "text-red-500 shrink-0 mt-0.5", size: 18 }),
+          m.jsxs("div", {
+            children: [m.jsx("p", {
+              className: "text-sm font-bold text-red-700",
+              children: "No markets assigned"
+            }), m.jsx("p", {
+              className: "text-xs text-red-600 mt-1 leading-relaxed",
+              children: "You have no markets assigned, so no reports are visible. Contact an admin to assign markets in your region."
+            })]
+          })]
+      }) : (!isManager && myRegions.size > 0 && m.jsxs("div", {
+        className: "bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center gap-2",
+        children: [m.jsx(ys, { className: "text-emerald-500 shrink-0", size: 16 }),
+          m.jsxs("p", {
+            className: "text-xs text-emerald-700 font-medium",
+            children: ["Region access: ", m.jsx("span", { className: "font-bold", children: Array.from(myRegions).join(", ") })]
+          })]
+      })),
+
+      // Summary stat cards (4 cards)
+      !noMarketsAssigned && m.jsx("div", {
+        className: "grid grid-cols-2 lg:grid-cols-4 gap-3",
+        children: [
+          m.jsxs(Je, {
+            className: "p-4 flex items-center gap-3",
+            children: [m.jsx("div", { className: "w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center", children: m.jsx(ao, { className: "text-emerald-600", size: 18 }) }),
+              m.jsxs("div", { children: [m.jsx("p", { className: "text-2xl font-extrabold text-gray-800", children: summary.total }), m.jsx("p", { className: "text-[10px] font-bold text-gray-400 uppercase", children: "Total Reports" })] })]
+          }),
+          m.jsxs(Je, {
+            className: "p-4 flex items-center gap-3",
+            children: [m.jsx("div", { className: "w-10 h-10 rounded-lg bg-cyan-100 flex items-center justify-center", children: m.jsx(qi, { className: "text-cyan-600", size: 18 }) }),
+              m.jsxs("div", { children: [m.jsx("p", { className: "text-2xl font-extrabold text-gray-800", children: summary.mo + summary.po }), m.jsx("p", { className: "text-[10px] font-bold text-gray-400 uppercase", children: summary.mo + " MO · " + summary.po + " PO" })] })]
+          }),
+          m.jsxs(Je, {
+            className: "p-4 flex items-center gap-3",
+            children: [m.jsx("div", { className: "w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center", children: m.jsx(o2, { className: "text-amber-600", size: 18 }) }),
+              m.jsxs("div", { children: [m.jsx("p", { className: "text-2xl font-extrabold text-gray-800", children: summary.pending }), m.jsx("p", { className: "text-[10px] font-bold text-gray-400 uppercase", children: "Pending Review" })] })]
+          }),
+          m.jsxs(Je, {
+            className: "p-4 flex items-center gap-3",
+            children: [m.jsx("div", { className: "w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center", children: m.jsx(ys, { className: "text-purple-600", size: 18 }) }),
+              m.jsxs("div", { children: [m.jsx("p", { className: "text-2xl font-extrabold text-gray-800", children: summary.remarked }), m.jsx("p", { className: "text-[10px] font-bold text-gray-400 uppercase", children: "Remarks Added" })] })]
+          })
+        ]
+      }),
+
+      // Controls bar — date + type filter + copy all
+      m.jsxs(Je, {
+        className: "p-4",
+        children: [m.jsxs("div", {
+          className: "flex flex-wrap items-end gap-3 justify-between",
+          children: [m.jsxs("div", {
+            className: "flex flex-wrap items-end gap-3",
+            children: [m.jsxs("div", {
+              className: "flex flex-col gap-1",
+              children: [m.jsx(Qe, { className: "text-[10px] font-bold text-gray-400 uppercase", children: "Date" }), m.jsx(yt, {
+                type: "date",
+                value: dateStr,
+                onChange: t => setDateStr(t.target.value),
+                className: "h-9 w-40 text-xs"
+              })]
+            }), m.jsxs("div", {
+              className: "flex flex-col gap-1",
+              children: [m.jsx(Qe, { className: "text-[10px] font-bold text-gray-400 uppercase", children: "Report Type" }), m.jsxs(qn, {
+                value: filterType,
+                onValueChange: v => setFilterType(v),
+                children: [m.jsx(Kn, { children: m.jsx(Yn, { placeholder: "All Types" }) }), m.jsxs(Xn, {
+                  children: [m.jsx(ft, { value: "all", children: "All Types" }), m.jsx(ft, { value: "MO", children: "MO Reports" }), m.jsx(ft, { value: "PO", children: "PO Reports" })]
+                })]
+              })]
+            }), m.jsx(ht, {
+              size: "sm",
+              variant: "outline",
+              onClick: () => setDateStr(new Date().toISOString().split("T")[0]),
+              className: "h-9 text-xs",
+              children: "Today"
+            }), filteredRows.length > 0 && m.jsxs(ht, {
+              size: "sm",
+              variant: "outline",
+              onClick: async () => {
+                const lines = [`Report Verification Summary — ${dateStr}`, `(${filteredRows.length} reports)`, ``];
+                filteredRows.forEach((row, i) => {
+                  const ex = remarks[`${row.type}:${row.id}`];
+                  const remark = (ex?.remark || remarkDrafts[`${row.type}:${row.id}`] || "").trim();
+                  lines.push(`${i + 1}. [${row.type}] ${row.userName} — ${row.region || "—"}`);
+                  lines.push(`   New: ${row.newStock.total} (S${row.newStock.smart}/T${row.newStock.tpos}/M${row.newStock.mpos}) · Rep: ${row.repairedStock.total} · R&R: ${row.rrStock.total} · Faulty: ${row.faulty.total}`);
+                  lines.push(`   Remark: ${remark || "(none)"}`);
+                  lines.push(``);
+                });
+                try {
+                  const ok = await copyReportToClipboard(lines.join("\n"));
+                  ok ? ui.success(`Copied ${filteredRows.length} report summaries to clipboard`) : ui.info("Copy failed");
+                } catch { ui.error("Failed to copy"); }
+              },
+              className: "h-9 text-xs border-blue-200 text-blue-600 hover:bg-blue-50",
+              children: [m.jsx(cp2, { size: 14, className: "mr-1" }), "Copy All"]
+            })]
+          })]
+        })]
+      }),
+
+      // Reports list — card-based layout
+      m.jsx("div", {
+        className: "space-y-3",
+        children: loading ? m.jsx("div", {
+          className: "space-y-3",
+          children: Array.from({ length: 4 }).map((_, i) => m.jsx(Je, { className: "p-4", children: m.jsx(Zn, { className: "h-32" }) }, i))
+        }) : filteredRows.length === 0 ? m.jsxs(Je, {
+          className: "p-10 text-center",
+          children: [m.jsx("div", {
+            className: "w-14 h-14 mx-auto mb-3 rounded-full bg-gray-100 flex items-center justify-center",
+            children: m.jsx(ao, { className: "text-gray-300", size: 28 })
+          }), m.jsx("p", {
+            className: "text-sm font-medium text-gray-500",
+            children: noMarketsAssigned ? "No markets assigned — nothing to verify" : "No reports submitted on this date"
+          }), !noMarketsAssigned && m.jsx("p", {
+            className: "text-xs text-gray-400 mt-1",
+            children: "Try selecting a different date above"
+          })]
+        }) : m.jsx(m.Fragment, {
+          children: [
+            // Section label
+            m.jsxs("div", {
+              className: "flex items-center gap-2 mb-1",
+              children: [m.jsx(ao, { className: "text-emerald-500", size: 16 }), m.jsxs("h3", {
+                className: "text-sm font-bold text-gray-800",
+                children: ["Stock Verification — ", dateStr, m.jsxs("span", { className: "text-xs font-normal text-gray-400 ml-2", children: ["(", filteredRows.length, " report", filteredRows.length === 1 ? "" : "s", ")"] })]
+              })]
+            }),
+            // Report cards
+            ...filteredRows.map(row => renderReportCard(row))
+          ]
+        })
+      })
+    ]
+  });
+}
+
+
+
+// ============================================================================
 // PO Report — Submission Form
 // ============================================================================
 // PO form fields (mirrors MO POS-section structure):
@@ -61398,6 +62087,9 @@ function Vz() {
                 path: "requests",
                 element: m.jsx(SupervisorRequestTable, {})
               }), m.jsx(Lt, {
+                path: "verify-reports",
+                element: m.jsx(ReportVerificationPage, {})
+              }), m.jsx(Lt, {
                 path: "po-reports",
                 element: m.jsx(SupervisorPOReports, {})
               }), m.jsx(Lt, {
@@ -61463,6 +62155,9 @@ function Vz() {
               }), m.jsx(Lt, {
                 path: "requests",
                 element: m.jsx(SupervisorRequestTable, {})
+              }), m.jsx(Lt, {
+                path: "verify-reports",
+                element: m.jsx(ReportVerificationPage, {})
               })]
             })
           })
