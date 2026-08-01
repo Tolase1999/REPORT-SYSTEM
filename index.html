@@ -37174,6 +37174,56 @@ function extractPOStockTotals(report) {
 }
 
 // ============================================================================
+// Verification Baseline — supervisor-filled expected stock totals
+// ============================================================================
+// Supervisors fill a baseline (3 totals: New, Normal=Repaired+R&R, Faulty)
+// for each of their markets in the morning. When MO reports come in, the
+// system auto-matches each report against the baseline for that market+date
+// and shows per-field ✓ Matched / ✗ Not Matched indicators.
+//
+// PO reports are NOT matched — they keep the remark-only verification style.
+// All access goes through SECURITY DEFINER RPCs that enforce region scoping.
+// ============================================================================
+
+// Save (upsert) a POSP stock baseline for a market + date.
+// baselineData is a JSON object:
+//   { new_stock: {smart, tpos, mpos}, repaired_stock: {smart, tpos, mpos},
+//     rr_stock: {smart, tpos, mpos}, faulty: {smart, tpos, mpos} }
+async function saveVerificationBaseline(userId, marketId, dateStr, baselineData) {
+  const { data, error } = await It.rpc("save_verification_baseline", {
+    p_user_id: userId,
+    p_market_id: marketId,
+    p_report_date: dateStr,
+    p_baseline_data: baselineData
+  });
+  if (error) throw new Error(`Failed to save POSP stock: ${error.message}`);
+  return data;
+}
+
+// Fetch all baselines for a date that the user is authorized to see.
+// Returns an array of baseline objects with market info joined.
+async function fetchVerificationBaselines(userId, dateStr) {
+  const { data, error } = await It.rpc("get_verification_baselines_by_date", {
+    p_user_id: userId,
+    p_date: dateStr
+  });
+  if (error) throw new Error(`Failed to fetch baselines: ${error.message}`);
+  return data || [];
+}
+
+// Fetch match results: for each MO report on the date, returns the baseline
+// for that market+date, the MO's submitted totals (with Repaired+R&R combined
+// into "Normal"), per-field match booleans, and an overall_status string.
+async function fetchVerificationMatches(userId, dateStr) {
+  const { data, error } = await It.rpc("get_verification_matches_by_date", {
+    p_user_id: userId,
+    p_date: dateStr
+  });
+  if (error) throw new Error(`Failed to fetch match results: ${error.message}`);
+  return data || [];
+}
+
+// ============================================================================
 // Supervisor Access Control
 // Controls which panels each supervisor can see.
 // Stored in app_settings table as key = "supervisor_access_<userId>".
@@ -59335,19 +59385,21 @@ function ReportVerificationPage() {
   const { user: e, assignedMarkets, accessScope } = Qn();
   const isManager = e?.role === "mo_po_manager";
 
-  // Default date = today (close-of-business verification)
   const [dateStr, setDateStr] = E.useState(() => new Date().toISOString().split("T")[0]);
-  const [tasks, setTasks] = E.useState([]);
   const [markets, setMarkets] = E.useState([]);
-  const [moReports, setMoReports] = E.useState([]);
-  const [poReports, setPoReports] = E.useState([]);
-  const [remarks, setRemarks] = E.useState({});          // keyed "TYPE:id"
-  const [remarkDrafts, setRemarkDrafts] = E.useState({}); // local textarea state
-  const [saving, setSaving] = E.useState({});             // keyed "TYPE:id"
+  const [tasks, setTasks] = E.useState([]);  // needed by readMOPOSField for MO reports
+  const [baselines, setBaselines] = E.useState([]);
+  const [baselineDrafts, setBaselineDrafts] = E.useState({});
+  const [savingBaseline, setSavingBaseline] = E.useState({});
+  const [moMatches, setMoMatches] = E.useState([]);  // unified MO + PO match results
+  const [rawReports, setRawReports] = E.useState({});  // {report_id: {data, baseline_data}} for breakdown display
+  const [remarks, setRemarks] = E.useState({});
+  const [remarkDrafts, setRemarkDrafts] = E.useState({});
+  const [saving, setSaving] = E.useState({});
   const [loading, setLoading] = E.useState(!0);
-  const [filterType, setFilterType] = E.useState("all");  // all | MO | PO
+  const [tab, setTab] = E.useState("baseline");
+  const cardElements = E.useRef({});
 
-  // Region sets (same logic as SupervisorRequestTable)
   const myMarketIds = E.useMemo(() => new Set((assignedMarkets || []).map(mk => mk.id)), [assignedMarkets]);
   const myRegions = E.useMemo(() => {
     const set = new Set();
@@ -59356,47 +59408,80 @@ function ReportVerificationPage() {
   }, [assignedMarkets]);
   const noMarketsAssigned = !isManager && myMarketIds.size === 0;
 
-  // Markets lookup (for region resolution per report)
   const marketsById = E.useMemo(() => {
     const map = new Map();
     markets.forEach(mk => map.set(mk.id, mk));
     return map;
   }, [markets]);
 
-  // Resolve region for a report (MO or PO)
-  const regionOf = (marketId) => {
-    if (!marketId) return "";
-    const mk = marketsById.get(marketId);
-    return mk?.region || mk?.name || "";
-  };
+  const baselinesByMarket = E.useMemo(() => {
+    const map = new Map();
+    baselines.forEach(b => map.set(b.market_id, b));
+    return map;
+  }, [baselines]);
 
   const load = async () => {
     if (!e) return;
     setLoading(!0);
     try {
-      const [allTasks, allMarkets] = await Promise.all([ph(), za()]);
-      setTasks(allTasks || []);
+      const nextDay = new Date(dateStr + "T12:00:00");
+      nextDay.setDate(nextDay.getDate() + 1);
+      const nextDayStr = nextDay.toISOString().split("T")[0];
+
+      const [allMarkets, allTasks, baselinesData, matchData, remarksMap] = await Promise.all([
+        za(),
+        ph(),
+        fetchVerificationBaselines(e.id, dateStr),
+        fetchVerificationMatches(e.id, dateStr),
+        fetchReportRemarksByDate(e.id, dateStr)
+      ]);
+
       setMarkets(allMarkets || []);
+      setTasks(allTasks || []);
+      setBaselines(baselinesData || []);
+      setMoMatches(matchData || []);
+      setRemarks(remarksMap || {});
 
-      const scope = accessScope || {
-        canViewMO: !0, canViewMS: !0,
-        canViewAllMarkets: isManager, canViewAllStaff: isManager,
-        allowedMarketIds: isManager ? [] : Array.from(myMarketIds),
-        allowedUserIds: [],
-        canManage: isManager, canSubmitReports: !1
-      };
-      const { mo, po } = await fetchVerificationReports(scope, dateStr, assignedMarkets);
-      setMoReports(mo || []);
-      setPoReports(po || []);
+      // Fetch raw report data (MO + PO) for the breakdown display.
+      // The SQL RPC doesn't return JSONB columns via PostgREST, so we fetch
+      // the raw data separately and merge it into the match results.
+      const [moRes, poRes] = await Promise.all([
+        It.from("reports").select("id, data").eq("type", "MO").gte("date", dateStr).lt("date", nextDayStr),
+        It.from("po_reports").select("id, data").gte("date", dateStr).lt("date", nextDayStr)
+      ]);
+      const rawMap = {};
+      (moRes.data || []).forEach(r => { rawMap[r.id] = { report_data: r.data }; });
+      (poRes.data || []).forEach(r => { rawMap[r.id] = { report_data: r.data }; });
+      // Also merge baseline_data from baselinesData (keyed by market_id)
+      const baselineByMarket = {};
+      (baselinesData || []).forEach(b => { baselineByMarket[b.market_id] = b.baseline_data; });
+      // Attach baseline_data to each match row
+      const enriched = (matchData || []).map(row => ({
+        ...row,
+        report_data: rawMap[row.report_id]?.report_data || null,
+        baseline_data: baselineByMarket[row.market_id] || null
+      }));
+      setRawReports(enriched);
+      setMoMatches(enriched);
 
-      const remarksMap = await fetchReportRemarksByDate(e.id, dateStr);
-      setRemarks(remarksMap);
-      const drafts = {};
-      Object.entries(remarksMap).forEach(([key, r]) => { drafts[key] = r.remark || ""; });
-      setRemarkDrafts(drafts);
+      const bDrafts = {};
+      (baselinesData || []).forEach(b => {
+        const d = b.baseline_data || {};
+        bDrafts[b.market_id] = {
+          new_stock: { smart: String(d.new_stock?.smart ?? ""), tpos: String(d.new_stock?.tpos ?? ""), mpos: String(d.new_stock?.mpos ?? "") },
+          repaired_stock: { smart: String(d.repaired_stock?.smart ?? ""), tpos: String(d.repaired_stock?.tpos ?? ""), mpos: String(d.repaired_stock?.mpos ?? "") },
+          rr_stock: { smart: String(d.rr_stock?.smart ?? ""), tpos: String(d.rr_stock?.tpos ?? ""), mpos: String(d.rr_stock?.mpos ?? "") },
+          faulty: { smart: String(d.faulty?.smart ?? ""), tpos: String(d.faulty?.tpos ?? ""), mpos: String(d.faulty?.mpos ?? "") }
+        };
+      });
+      setBaselineDrafts(bDrafts);
+
+      const rDrafts = {};
+      Object.entries(remarksMap || {}).forEach(([key, r]) => { rDrafts[key] = r.remark || ""; });
+      setRemarkDrafts(rDrafts);
     } catch (err) {
       console.error("Failed to load verification data:", err);
-      ui.error(err.message || "Failed to load reports");
+      ui.error(err.message || "Failed to load data");
     } finally {
       setLoading(!1);
     }
@@ -59404,40 +59489,56 @@ function ReportVerificationPage() {
 
   E.useEffect(() => { load() }, [dateStr, e?.id, myMarketIds.size, myRegions.size]);
 
-  // Build unified row list. Each stock field is { smart, tpos, mpos, total }.
-  const rows = E.useMemo(() => {
-    const out = [];
-    (moReports || []).forEach(r => {
-      if (r.type !== "MO") return;
-      const totals = extractMOStockTotals(r, tasks);
-      out.push({
-        type: "MO",
-        id: r.id,
-        date: r.date,
-        userName: r.user?.name || "Unknown",
-        submitterId: r.user_id,
-        marketId: r.market_id,
-        region: regionOf(r.market_id),
-        ...totals
-      });
-    });
-    (poReports || []).forEach(r => {
-      const totals = extractPOStockTotals(r);
-      out.push({
-        type: "PO",
-        id: r.id,
-        date: r.date,
-        userName: r.user?.name || "Unknown",
-        submitterId: r.user_id,
-        marketId: r.market_id,
-        region: regionOf(r.user?.market_id || r.market_id),
-        ...totals
-      });
-    });
-    return out;
-  }, [moReports, poReports, tasks, marketsById]);
+  // Show ALL markets (managers) or all assigned markets (supervisors).
+  // Don't filter by team — markets may have any team value (MO, MS, PO, or null).
+  const myMarkets = E.useMemo(() => {
+    if (isManager) return markets;
+    return assignedMarkets || [];
+  }, [markets, assignedMarkets, isManager]);
 
-  const filteredRows = filterType === "all" ? rows : rows.filter(r => r.type === filterType);
+  // Update a baseline draft field. stockType = "new_stock" | "repaired_stock" | "rr_stock" | "faulty"
+  // field = "smart" | "tpos" | "mpos"
+  const updateBaselineDraft = (marketId, stockType, field, value) => {
+    setBaselineDrafts(prev => {
+      const existing = prev[marketId] || {
+        new_stock: { smart: "", tpos: "", mpos: "" },
+        repaired_stock: { smart: "", tpos: "", mpos: "" },
+        rr_stock: { smart: "", tpos: "", mpos: "" },
+        faulty: { smart: "", tpos: "", mpos: "" }
+      };
+      return {
+        ...prev,
+        [marketId]: {
+          ...existing,
+          [stockType]: { ...existing[stockType], [field]: value }
+        }
+      };
+    });
+  };
+
+  const handleSaveBaseline = async (marketId) => {
+    const draft = baselineDrafts[marketId] || {};
+    const toNum = v => { const n = parseInt(v, 10); return isNaN(n) ? 0 : n; };
+    const baselineData = {
+      new_stock: { smart: toNum(draft.new_stock?.smart), tpos: toNum(draft.new_stock?.tpos), mpos: toNum(draft.new_stock?.mpos) },
+      repaired_stock: { smart: toNum(draft.repaired_stock?.smart), tpos: toNum(draft.repaired_stock?.tpos), mpos: toNum(draft.repaired_stock?.mpos) },
+      rr_stock: { smart: toNum(draft.rr_stock?.smart), tpos: toNum(draft.rr_stock?.tpos), mpos: toNum(draft.rr_stock?.mpos) },
+      faulty: { smart: toNum(draft.faulty?.smart), tpos: toNum(draft.faulty?.tpos), mpos: toNum(draft.faulty?.mpos) }
+    };
+    setSavingBaseline(prev => ({ ...prev, [marketId]: !0 }));
+    try {
+      await saveVerificationBaseline(e.id, marketId, dateStr, baselineData);
+      const baselinesData = await fetchVerificationBaselines(e.id, dateStr);
+      setBaselines(baselinesData || []);
+      const matchData = await fetchVerificationMatches(e.id, dateStr);
+      setMoMatches(matchData || []);
+      ui.success("POSP stock saved");
+    } catch (err) {
+      ui.error(err.message || "Failed to save POSP stock");
+    } finally {
+      setSavingBaseline(prev => ({ ...prev, [marketId]: !1 }));
+    }
+  };
 
   const handleSaveRemark = async (row) => {
     const key = `${row.type}:${row.id}`;
@@ -59445,13 +59546,9 @@ function ReportVerificationPage() {
     setSaving(prev => ({ ...prev, [key]: !0 }));
     try {
       const saved = await saveReportRemark({
-        userId: e.id,
-        reportType: row.type,
-        reportId: row.id,
-        reportDate: row.date,
-        submitterId: row.submitterId,
-        marketId: row.marketId,
-        remark: text
+        userId: e.id, reportType: row.type, reportId: row.id,
+        reportDate: row.date, submitterId: row.submitterId,
+        marketId: row.marketId, remark: text
       });
       setRemarks(prev => ({ ...prev, [key]: saved }));
       ui.success("Remark saved");
@@ -59466,73 +59563,10 @@ function ReportVerificationPage() {
     setRemarkDrafts(prev => ({ ...prev, [key]: text }));
   };
 
-  // Summary counts
-  const summary = {
-    total: rows.length,
-    mo: rows.filter(r => r.type === "MO").length,
-    po: rows.filter(r => r.type === "PO").length,
-    remarked: Object.keys(remarks).length,
-    pending: rows.length - Object.keys(remarks).length
-  };
-
-  // Map of card DOM elements keyed by `${type}:${id}` — used for screenshots.
-  // We use a ref-object Map instead of calling useRef inside .map() (which
-  // would violate React's Rules of Hooks and cause error #310).
-  const cardElements = E.useRef({});
-
-  // Helper: render a single stock breakdown mini-card.
-  // Uses INLINE STYLES for the header bar to guarantee text visibility
-  // regardless of Tailwind's bg-opacity behavior.
-  // data = { smart, tpos, mpos, total }
-  // theme = "purple" | "blue" | "orange" | "red"
-  const renderStockCard = (label, data, theme) => {
-    const themes = {
-      purple: { headerBg: "#7c3aed", headerText: "#ffffff", cardBg: "#faf5ff", borderColor: "#ddd6fe", labelText: "#6d28d9" },
-      blue:   { headerBg: "#2563eb", headerText: "#ffffff", cardBg: "#eff6ff", borderColor: "#bfdbfe", labelText: "#1d4ed8" },
-      orange: { headerBg: "#ea580c", headerText: "#ffffff", cardBg: "#fff7ed", borderColor: "#fed7aa", labelText: "#c2410c" },
-      red:    { headerBg: "#dc2626", headerText: "#ffffff", cardBg: "#fef2f2", borderColor: "#fecaca", labelText: "#b91c1c" }
-    };
-    const t = themes[theme] || themes.purple;
-    return m.jsxs("div", {
-      style: { backgroundColor: t.cardBg, border: `2px solid ${t.borderColor}`, borderRadius: "12px", overflow: "hidden" },
-      children: [
-        // Header bar — solid background + white text via inline style (guaranteed visible)
-        m.jsxs("div", {
-          style: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 12px", backgroundColor: t.headerBg },
-          children: [
-            m.jsx("span", { style: { fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: t.headerText }, children: label }),
-            m.jsx("span", { style: { fontSize: "10px", fontWeight: 800, color: t.headerText, backgroundColor: "rgba(0,0,0,0.25)", borderRadius: "4px", padding: "1px 6px" }, children: data.total })
-          ]
-        }),
-        // Breakdown grid: Smart / TPOS / MPOS
-        m.jsx("div", {
-          style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr" },
-          children: [
-            m.jsxs("div", {
-              style: { padding: "6px 8px", textAlign: "center", backgroundColor: "rgba(255,255,255,0.7)", borderRight: "1px solid rgba(0,0,0,0.06)" },
-              children: [m.jsx("p", { style: { fontSize: "8px", fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", margin: 0 }, children: "Smart" }), m.jsx("p", { style: { fontSize: "14px", fontWeight: 700, color: "#374151", margin: 0 }, children: data.smart })]
-            }),
-            m.jsxs("div", {
-              style: { padding: "6px 8px", textAlign: "center", backgroundColor: "rgba(255,255,255,0.7)", borderRight: "1px solid rgba(0,0,0,0.06)" },
-              children: [m.jsx("p", { style: { fontSize: "8px", fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", margin: 0 }, children: "TPOS" }), m.jsx("p", { style: { fontSize: "14px", fontWeight: 700, color: "#374151", margin: 0 }, children: data.tpos })]
-            }),
-            m.jsxs("div", {
-              style: { padding: "6px 8px", textAlign: "center", backgroundColor: "rgba(255,255,255,0.7)" },
-              children: [m.jsx("p", { style: { fontSize: "8px", fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", margin: 0 }, children: "MPOS" }), m.jsx("p", { style: { fontSize: "14px", fontWeight: 700, color: "#374151", margin: 0 }, children: data.mpos })]
-            })
-          ]
-        })
-      ]
-    });
-  };
-
-  // Screenshot a card element and download as PNG.
-  // Dynamically loads html2canvas from CDN on first use (keeps the bundle small).
   const screenshotCard = async (key, filename) => {
-    const cardElement = cardElements.current[key];
-    if (!cardElement) return;
+    const el = cardElements.current[key];
+    if (!el) return;
     try {
-      // Load html2canvas on demand
       if (!window.html2canvas) {
         ui.info("Loading screenshot tool...");
         await new Promise((resolve, reject) => {
@@ -59543,169 +59577,406 @@ function ReportVerificationPage() {
           document.head.appendChild(script);
         });
       }
-      const canvas = await window.html2canvas(cardElement, {
-        backgroundColor: "#ffffff",
-        scale: 2,
-        logging: false,
-        useCORS: true
-      });
+      const canvas = await window.html2canvas(el, { backgroundColor: "#ffffff", scale: 2, logging: false, useCORS: true });
       canvas.toBlob(blob => {
         if (!blob) { ui.error("Failed to generate image"); return; }
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+        a.href = url; a.download = filename;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
         URL.revokeObjectURL(url);
         ui.success("Screenshot downloaded");
       }, "image/png");
     } catch (err) {
-      console.error("Screenshot failed:", err);
       ui.error("Screenshot failed: " + (err.message || "unknown error"));
     }
   };
 
-  // Copy a formatted text summary of a card to the clipboard for quick sharing
-  // via WhatsApp/email/etc.
-  const copyCardSummary = async (row) => {
-    const existing = remarks[`${row.type}:${row.id}`];
-    const remark = (existing?.remark || remarkDrafts[`${row.type}:${row.id}`] || "").trim();
+  const copyCardSummary = async (row, isMatch) => {
+    const reportType = row.report_type || "MO";
+    const key = `${reportType}:${row.report_id || row.id}`;
+    const ex = remarks[key];
+    const remark = (ex?.remark || remarkDrafts[key] || "").trim();
+    const discs = getAllDiscrepancies(row);
     const lines = [
-      `Report Verification — ${row.type}`,
-      `Officer: ${row.userName}`,
-      `Region: ${row.region || "—"}`,
-      `Date: ${row.date}`,
+      `POSP Stock Verification — ${reportType} Match Result`,
+      `Officer: ${row.officer_name || "Unknown"}`,
+      `Market: ${row.market_name || "—"}, Region: ${row.market_region || "—"}`,
+      `Date: ${row.report_date || row.date}`,
       ``,
-      `Stock Breakdown:`,
-      `  New Stock:      Smart ${row.newStock.smart} · TPOS ${row.newStock.tpos} · MPOS ${row.newStock.mpos} · Total ${row.newStock.total}`,
-      `  Repaired Stock: Smart ${row.repairedStock.smart} · TPOS ${row.repairedStock.tpos} · MPOS ${row.repairedStock.mpos} · Total ${row.repairedStock.total}`,
-      `  R&R Stock:      Smart ${row.rrStock.smart} · TPOS ${row.rrStock.tpos} · MPOS ${row.rrStock.mpos} · Total ${row.rrStock.total}`,
-      `  Faulty:         Smart ${row.faulty.smart} · TPOS ${row.faulty.tpos} · MPOS ${row.faulty.mpos} · Total ${row.faulty.total}`,
-      ``,
-      `Remark: ${remark || "(none)"}`
+      `Overall: ${row.overall_status === "matched" ? "FULLY MATCHED" : row.overall_status === "no_baseline" ? "No POSP Stock set" : "MISMATCH"}`,
+      ``
     ];
-    const text = lines.join("\n");
-    try {
-      const ok = await copyReportToClipboard(text);
-      ok ? ui.success("Summary copied to clipboard — paste into WhatsApp/email") : ui.info("Copy failed — please copy manually");
-    } catch (err) {
-      ui.error("Failed to copy");
+    if (discs.length > 0) {
+      lines.push("Discrepancies:");
+      discs.forEach(d => lines.push("  - " + d));
+    } else if (row.overall_status === "matched") {
+      lines.push("All fields matched POSP Stock.");
     }
+    lines.push("", `Remark: ${remark || "(none)"}`);
+    try {
+      const ok = await copyReportToClipboard(lines.join("\n"));
+      ok ? ui.success("Summary copied to clipboard") : ui.info("Copy failed");
+    } catch { ui.error("Failed to copy"); }
   };
 
-  // Helper: render a single report verification card
-  const renderReportCard = (row) => {
-    const key = `${row.type}:${row.id}`;
-    const existing = remarks[key];
-    const draft = remarkDrafts[key] ?? "";
-    const isDirty = draft !== (existing?.remark || "");
-    const isMO = row.type === "MO";
+  // === Helper: extract normalized Smart/TPOS/MPOS breakdown from a match row ===
+  // For MO reports, scans ALL keys in report_data and matches each stock type
+  // by task label pattern (New/Repaired/R&R/Faulty). This handles:
+  //   - System keys: data.stock_new
+  //   - UUID keys with task.key: data[task.id] where task.key = "stock_new"
+  //   - UUID keys without task.key: data[task.id] matched by label pattern
+  //   - Alternative keys: data.new_stock, data.stockNew, etc.
+  // For PO reports, reads the fixed po_reports.data structure directly.
+  const findMOStockByLabel = (rd, tasks, labelPattern, systemKey) => {
+    // Strategy 0: try the system key directly (data.stock_new, data.faulty, etc.)
+    // This handles the common case where MO reports store stock under system keys.
+    if (systemKey && rd[systemKey] && typeof rd[systemKey] === "object") {
+      const v = rd[systemKey];
+      if (v.smart !== undefined || v.tpos !== undefined || v.total !== undefined) {
+        return { smart: Number(v.smart) || 0, tpos: Number(v.tpos) || 0, mpos: Number(v.mpos) || 0 };
+      }
+    }
+    // Strategy 1: check all tasks matching the label pattern
+    for (const t of (tasks || [])) {
+      if (!t || (t.team !== "MO" && t.team !== "Both") || t.active === false) continue;
+      if (!t.label || !labelPattern.test(t.label)) continue;
+      // Try task.key, then task.id directly on data, then data.custom[task.id]
+      const src = (t.key && rd[t.key]) || rd[t.id] || (rd.custom && rd.custom[t.id]);
+      if (src && typeof src === "object" && (src.smart !== undefined || src.tpos !== undefined || src.total !== undefined)) {
+        return { smart: Number(src.smart) || 0, tpos: Number(src.tpos) || 0, mpos: Number(src.mpos) || 0 };
+      }
+    }
+    // Strategy 2: scan all data keys for objects that look like stock values,
+    // match by task label. Also try common alternative key names.
+    const altKeys = {
+      stock_new: ["new_stock", "stockNew", "newStock"],
+      stock_rep: ["rep_stock", "stockRep", "repaired", "repaired_stock"],
+      stock_rr: ["rr_stock", "rr"],
+      faulty: ["faulty_pos", "faultyPos"]
+    }[systemKey] || [];
+    for (const k of [...Object.keys(rd), ...altKeys]) {
+      if (k === "custom" || k === "moName" || k === "city" || k === "marketId") continue;
+      const v = rd[k];
+      if (v && typeof v === "object" && (v.smart !== undefined || v.tpos !== undefined || v.total !== undefined)) {
+        // Match if: task with this id/key has matching label, OR key is in altKeys
+        const matchingTask = (tasks || []).find(t => t && (t.id === k || t.key === k) && t.label && labelPattern.test(t.label));
+        if (matchingTask || altKeys.includes(k)) {
+          return { smart: Number(v.smart) || 0, tpos: Number(v.tpos) || 0, mpos: Number(v.mpos) || 0 };
+        }
+      }
+    }
+    return { smart: 0, tpos: 0, mpos: 0 };
+  };
+
+  const extractMatchBreakdown = (row) => {
+    const isMO = row.report_type === "MO";
+    const rd = row.report_data || {};
+    const bd = row.baseline_data || {};
+    const norm = v => ({ smart: Number(v?.smart) || 0, tpos: Number(v?.tpos) || 0, mpos: Number(v?.mpos) || 0 });
+    let sub;
+    if (isMO) {
+      // Use robust matching — tries system key first, then task label matching
+      sub = {
+        new_stock: findMOStockByLabel(rd, tasks, /new\s*stock|brand\s*new/i, "stock_new"),
+        repaired_stock: findMOStockByLabel(rd, tasks, /rep.*stock|repaired.*stock|stock.*rep/i, "stock_rep"),
+        rr_stock: findMOStockByLabel(rd, tasks, /(?:r&r|rr)\s*stock|stock\s*(?:rr|r&r)/i, "stock_rr"),
+        faulty: findMOStockByLabel(rd, tasks, /faulty/i, "faulty")
+      };
+    } else {
+      sub = {
+        new_stock: norm(rd.brand_new_stock),
+        repaired_stock: norm(rd.repaired_stock),
+        rr_stock: norm(rd.rr_stock),
+        faulty: norm(rd.total_faulty)
+      };
+    }
+    const base = {
+      new_stock: norm(bd.new_stock),
+      repaired_stock: norm(bd.repaired_stock),
+      rr_stock: norm(bd.rr_stock),
+      faulty: norm(bd.faulty)
+    };
+    return { submitted: sub, baseline: base };
+  };
+
+  // === Helper: generate discrepancy text for a mismatched sub-field ===
+  // Format: "New SMART not match with 2 stock above POSP STOCK"
+  const discrepancyLine = (stockLabel, fieldLabel, baseline, submitted) => {
+    const diff = (submitted || 0) - (baseline || 0);
+    if (diff === 0) return null;
+    const absDiff = Math.abs(diff);
+    const direction = diff > 0 ? "above" : "below";
+    return `${stockLabel} ${fieldLabel} not match with ${absDiff} stock ${direction} POSP STOCK`;
+  };
+
+  // === Helper: generate all discrepancy lines for a row (for summary) ===
+  const getAllDiscrepancies = (row) => {
+    if (row.overall_status !== "mismatch" || !row.baseline_exists) return [];
+    const { submitted, baseline } = extractMatchBreakdown(row);
+    const stockTypes = [
+      { key: "new_stock", label: "New" },
+      { key: "repaired_stock", label: "Repaired" },
+      { key: "rr_stock", label: "R&R" },
+      { key: "faulty", label: "Faulty" }
+    ];
+    const fields = [
+      { key: "smart", label: "SMART" },
+      { key: "tpos", label: "TPOS" },
+      { key: "mpos", label: "MPOS" }
+    ];
+    const lines = [];
+    stockTypes.forEach(st => {
+      fields.forEach(f => {
+        const line = discrepancyLine(st.label, f.label, baseline[st.key][f.key], submitted[st.key][f.key]);
+        if (line) lines.push(line);
+      });
+    });
+    return lines;
+  };
+
+  // enrichedMatches just passes through the SQL RPC's pre-computed values.
+  // The RPC already computes mo_new_total, base_new_total, overall_status etc
+  // correctly server-side. We do NOT recompute them client-side (that caused
+  // zeros when extractMatchBreakdown couldn't find the data). The breakdown
+  // (Smart/TPOS/MPOS per stock type) is computed on-demand in renderMatchCard
+  // via extractMatchBreakdown, only for display purposes.
+  const enrichedMatches = moMatches;
+
+  const summary = E.useMemo(() => {
+    const moRows = enrichedMatches.filter(r => r.report_type === "MO");
+    const poRows = enrichedMatches.filter(r => r.report_type === "PO");
+    const matched = enrichedMatches.filter(r => r.overall_status === "matched").length;
+    const mismatch = enrichedMatches.filter(r => r.overall_status === "mismatch").length;
+    const noBaseline = enrichedMatches.filter(r => r.overall_status === "no_baseline").length;
+    return { total: enrichedMatches.length, mo: moRows.length, po: poRows.length, matched, mismatch, noBaseline, baselines: baselines.length };
+  }, [enrichedMatches, baselines]);
+
+  // === POSP Stock entry card — full Smart/TPOS/MPOS breakdown per stock type ===
+  const renderBaselineCard = (mk) => {
+    const marketId = mk.id;
+    const draft = baselineDrafts[marketId] || {
+      new_stock: { smart: "", tpos: "", mpos: "" },
+      repaired_stock: { smart: "", tpos: "", mpos: "" },
+      rr_stock: { smart: "", tpos: "", mpos: "" },
+      faulty: { smart: "", tpos: "", mpos: "" }
+    };
+    const existing = baselinesByMarket.get(marketId);
+
+    // Helper: render one stock type section with Smart/TPOS/MPOS inputs
+    const renderStockSection = (stockType, label, themeColor) => {
+      const d = draft[stockType] || { smart: "", tpos: "", mpos: "" };
+      const total = (parseInt(d.smart, 10) || 0) + (parseInt(d.tpos, 10) || 0) + (parseInt(d.mpos, 10) || 0);
+      return m.jsxs("div", {
+        style: { borderRadius: "10px", overflow: "hidden", border: `2px solid ${themeColor.border}` },
+        children: [
+          // Header bar
+          m.jsxs("div", {
+            style: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 10px", backgroundColor: themeColor.headerBg },
+            children: [
+              m.jsx("span", { style: { fontSize: "10px", fontWeight: 700, color: "#ffffff", textTransform: "uppercase", letterSpacing: "0.04em" }, children: label }),
+              m.jsx("span", { style: { fontSize: "10px", fontWeight: 800, color: "#ffffff", backgroundColor: "rgba(0,0,0,0.25)", borderRadius: "4px", padding: "1px 6px" }, children: total })
+            ]
+          }),
+          // 3 inputs: Smart / TPOS / MPOS
+          m.jsx("div", {
+            style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", backgroundColor: themeColor.lightBg },
+            children: ["smart", "tpos", "mpos"].map((field, i) => m.jsxs("div", {
+              style: { padding: "4px 6px", borderRight: i < 2 ? "1px solid rgba(0,0,0,0.06)" : "none" },
+              children: [
+                m.jsx("label", { style: { fontSize: "8px", fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", display: "block", textAlign: "center" }, children: field }),
+                m.jsx("input", {
+                  type: "number",
+                  min: "0",
+                  value: d[field],
+                  onChange: t => updateBaselineDraft(marketId, stockType, field, t.target.value),
+                  placeholder: "0",
+                  style: { width: "100%", height: "28px", textAlign: "center", fontSize: "13px", fontWeight: 700, color: "#374151", border: "1px solid #e5e7eb", borderRadius: "4px", backgroundColor: "#ffffff", padding: "0 4px" }
+                })
+              ]
+            }, field))
+          })
+        ]
+      });
+    };
+
+    const themes = {
+      purple: { headerBg: "#7c3aed", border: "#ddd6fe", lightBg: "#faf5ff" },
+      blue:   { headerBg: "#2563eb", border: "#bfdbfe", lightBg: "#eff6ff" },
+      orange: { headerBg: "#ea580c", border: "#fed7aa", lightBg: "#fff7ed" },
+      red:    { headerBg: "#dc2626", border: "#fecaca", lightBg: "#fef2f2" }
+    };
+
+    return m.jsxs(Je, {
+      className: "p-5 border-l-4 border-l-indigo-500",
+      children: [
+        // Card header
+        m.jsxs("div", {
+          className: "flex items-center justify-between mb-4",
+          children: [
+            m.jsxs("div", { children: [
+              m.jsx("p", { className: "text-sm font-bold text-gray-800", children: mk.name }),
+              m.jsxs("p", { className: "text-[11px] text-gray-400", children: [mk.region || "—", " · ", mk.team || "MO", " market"] })
+            ]}),
+            existing && m.jsx("span", { className: "text-[9px] font-bold uppercase px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700", children: "POSP Stock Set" })
+          ]
+        }),
+        // 4 stock type sections in a 2×2 grid
+        m.jsx("div", {
+          className: "grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4",
+          children: [
+            renderStockSection("new_stock", "New Stock", themes.purple),
+            renderStockSection("repaired_stock", "Repaired Stock", themes.blue),
+            renderStockSection("rr_stock", "R&R Stock", themes.orange),
+            renderStockSection("faulty", "Faulty", themes.red)
+          ]
+        }),
+        // Save button — large and prominent, always visible
+        m.jsx("div", {
+          className: "flex justify-end pt-2 border-t border-gray-100",
+          children: m.jsxs("button", {
+            onClick: () => handleSaveBaseline(marketId),
+            disabled: savingBaseline[marketId],
+            style: { height: "40px", padding: "0 20px", fontSize: "13px", fontWeight: 700, borderRadius: "8px", border: "none", backgroundColor: savingBaseline[marketId] ? "#c7d2fe" : "#4f46e5", color: "#ffffff", cursor: savingBaseline[marketId] ? "wait" : "pointer", display: "inline-flex", alignItems: "center", gap: "6px" },
+            children: [m.jsx(lj, { size: 16 }), savingBaseline[marketId] ? "Saving..." : (existing ? "Update POSP Stock" : "Save POSP Stock")]
+          })
+        })
+      ]
+    }, marketId);
+  };
+
+
+  // === Helper: generate the plain-text summary for copying ===
+  const mismatchSummaryText = E.useMemo(() => {
+    const mismatches = enrichedMatches.filter(r => r.overall_status === "mismatch" && r.baseline_exists);
+    if (mismatches.length === 0) return "POSP Stock Verification — " + dateStr + "\n\nAll reports fully matched. No discrepancies.";
+    const lines = ["POSP Stock Verification — " + dateStr, "", "Mismatches (" + mismatches.length + "):", ""];
+    mismatches.forEach((row, i) => {
+      lines.push((i + 1) + ". " + (row.officer_name || "Unknown") + " (" + row.report_type + ") — " + (row.market_name || "—") + ", " + (row.market_region || "—"));
+      const discs = getAllDiscrepancies(row);
+      discs.forEach(d => lines.push("   - " + d));
+      lines.push("");
+    });
+    return lines.join("\n");
+  }, [enrichedMatches, dateStr]);
+
+  // === Match result card — clean table design ===
+  const renderMatchCard = (row) => {
+    const reportType = row.report_type || "MO";
+    const key = `${reportType}:${row.report_id}`;
+    const isMatched = row.overall_status === "matched";
+    const isMismatch = row.overall_status === "mismatch";
+    const noBaseline = row.overall_status === "no_baseline";
+    const isMO = reportType === "MO";
+    const { submitted, baseline } = extractMatchBreakdown(row);
+
+    const badgeBg = isMatched ? "#dcfce7" : isMismatch ? "#fee2e2" : "#fef3c7";
+    const badgeFg = isMatched ? "#15803d" : isMismatch ? "#b91c1c" : "#b45309";
+    const badgeLabel = isMatched ? "Fully Matched" : isMismatch ? "Mismatch" : "No POSP Stock";
+
+    // Build table rows: 4 stock types × 3 fields = 12 rows
+    const stockTypes = [
+      { key: "new_stock", label: "New Stock" },
+      { key: "repaired_stock", label: "Repaired Stock" },
+      { key: "rr_stock", label: "R&R Stock" },
+      { key: "faulty", label: "Faulty" }
+    ];
+    const fields = [
+      { key: "smart", label: "Smart" },
+      { key: "tpos", label: "TPOS" },
+      { key: "mpos", label: "MPOS" }
+    ];
 
     return m.jsx("div", {
       ref: el => { if (el) cardElements.current[key] = el; },
       children: m.jsxs(Je, {
-        className: `overflow-hidden border-l-4 ${isMO ? "border-l-emerald-500" : "border-l-cyan-500"} hover:shadow-md transition-shadow bg-white`,
-      children: [
-        // Card header
-        m.jsxs("div", {
-          className: "flex items-center justify-between p-4 border-b border-gray-100 bg-gray-50/50",
-          children: [
-            m.jsxs("div", {
-              className: "flex items-center gap-3 min-w-0",
+        className: `overflow-hidden border-l-4 ${isMO ? "border-l-emerald-500" : "border-l-cyan-500"} bg-white`,
+        children: [
+          // Header — officer name + status badge
+          m.jsxs("div", {
+            className: "flex items-center justify-between p-4 border-b border-gray-200",
+            style: { backgroundColor: "#f9fafb" },
+            children: [
+              m.jsxs("div", { className: "flex items-center gap-3 min-w-0", children: [
+                m.jsx("span", { className: `text-[10px] font-bold uppercase px-2 py-1 rounded-full ${isMO ? "bg-emerald-100 text-emerald-700" : "bg-cyan-100 text-cyan-700"}`, children: reportType }),
+                m.jsxs("div", { className: "min-w-0", children: [
+                  m.jsx("p", { className: "text-sm font-bold text-gray-900 truncate", children: row.officer_name || "Unknown" }),
+                  m.jsxs("p", { className: "text-[11px] text-gray-500", children: [row.market_name || "—", " · ", row.market_region || "—"] })
+                ]})
+              ]}),
+              m.jsxs("span", { style: { fontSize: "11px", fontWeight: 700, color: badgeFg, backgroundColor: badgeBg, padding: "4px 12px", borderRadius: "9999px", display: "inline-flex", alignItems: "center", gap: "4px", whiteSpace: "nowrap" }, children: [
+                isMatched ? "✓" : isMismatch ? "✗" : "—",
+                badgeLabel
+              ]})
+            ]
+          }),
+          // Table — POSP vs Submitted for each stock type / field
+          m.jsx("div", {
+            className: "overflow-x-auto",
+            children: m.jsxs("table", {
+              style: { width: "100%", borderCollapse: "collapse", fontSize: "12px" },
               children: [
-                m.jsx("div", {
-                  className: `w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${isMO ? "bg-emerald-100" : "bg-cyan-100"}`,
-                  children: m.jsx(qi, { className: isMO ? "text-emerald-600" : "text-cyan-600", size: 18 })
+                m.jsx("thead", {
+                  children: m.jsxs("tr", {
+                    style: { backgroundColor: "#f3f4f6" },
+                    children: [
+                      m.jsx("th", { style: { textAlign: "left", padding: "6px 10px", fontSize: "10px", fontWeight: 700, color: "#6b7280", textTransform: "uppercase", borderBottom: "2px solid #e5e7eb" }, children: "Stock Type" }),
+                      m.jsx("th", { style: { textAlign: "center", padding: "6px 10px", fontSize: "10px", fontWeight: 700, color: "#6b7280", textTransform: "uppercase", borderBottom: "2px solid #e5e7eb" }, children: "Field" }),
+                      m.jsx("th", { style: { textAlign: "center", padding: "6px 10px", fontSize: "10px", fontWeight: 700, color: "#6b7280", textTransform: "uppercase", borderBottom: "2px solid #e5e7eb" }, children: "POSP Stock" }),
+                      m.jsx("th", { style: { textAlign: "center", padding: "6px 10px", fontSize: "10px", fontWeight: 700, color: "#6b7280", textTransform: "uppercase", borderBottom: "2px solid #e5e7eb" }, children: "Submitted" }),
+                      m.jsx("th", { style: { textAlign: "center", padding: "6px 10px", fontSize: "10px", fontWeight: 700, color: "#6b7280", textTransform: "uppercase", borderBottom: "2px solid #e5e7eb" }, children: "Status" })
+                    ]
+                  })
                 }),
-                m.jsxs("div", {
-                  className: "min-w-0",
-                  children: [
-                    m.jsxs("div", {
-                      className: "flex items-center gap-2",
+                m.jsx("tbody", {
+                  children: stockTypes.flatMap(st => fields.map((f, fi) => {
+                    const baseVal = noBaseline ? null : baseline[st.key][f.key];
+                    const subVal = submitted[st.key][f.key];
+                    const matched = !noBaseline && baseVal === subVal;
+                    const mismatched = !noBaseline && baseVal !== subVal;
+                    const rowBg = mismatched ? "#fef2f2" : matched ? "#f0fdf4" : "#ffffff";
+                    const statusFg = noBaseline ? "#9ca3af" : matched ? "#15803d" : "#b91c1c";
+                    const statusText = noBaseline ? "—" : matched ? "✓ Match" : "✗ Diff";
+                    const stockLabel = fi === 0 ? st.label : "";
+                    return m.jsxs("tr", {
+                      style: { backgroundColor: rowBg, borderBottom: "1px solid #f3f4f6" },
                       children: [
-                        m.jsx("span", { className: `text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full ${isMO ? "bg-emerald-100 text-emerald-700" : "bg-cyan-100 text-cyan-700"}`, children: row.type }),
-                        m.jsx("span", { className: "text-sm font-bold text-gray-800 truncate", children: row.userName })
+                        m.jsx("td", { style: { padding: "5px 10px", fontWeight: fi === 0 ? 700 : 400, color: "#374151", fontSize: "11px" }, children: stockLabel }),
+                        m.jsx("td", { style: { padding: "5px 10px", textAlign: "center", color: "#6b7280", fontSize: "11px" }, children: f.label }),
+                        m.jsx("td", { style: { padding: "5px 10px", textAlign: "center", fontWeight: 700, color: noBaseline ? "#d1d5db" : "#111827", fontSize: "13px" }, children: noBaseline ? "—" : baseVal }),
+                        m.jsx("td", { style: { padding: "5px 10px", textAlign: "center", fontWeight: 700, color: "#111827", fontSize: "13px" }, children: subVal }),
+                        m.jsx("td", { style: { padding: "5px 10px", textAlign: "center", fontWeight: 700, color: statusFg, fontSize: "11px" }, children: statusText })
                       ]
-                    }),
-                    m.jsxs("p", {
-                      className: "text-[11px] text-gray-500 mt-0.5",
-                      children: [row.region || "—", " · ", row.date]
-                    })
-                  ]
-                })
-              ]
-            }),
-            // Remark status indicator
-            m.jsxs("div", {
-              className: "flex items-center gap-1.5 shrink-0",
-              children: [
-                existing
-                  ? m.jsxs(m.Fragment, { children: [m.jsx(ys, { className: "text-emerald-500", size: 14 }), m.jsx("span", { className: "text-[10px] font-bold text-emerald-600 uppercase", children: "Remark Added" })] })
-                  : m.jsxs(m.Fragment, { children: [m.jsx(o2, { className: "text-amber-500", size: 14 }), m.jsx("span", { className: "text-[10px] font-bold text-amber-600 uppercase", children: "Pending" })] })
-              ]
-            })
-          ]
-        }),
-
-        // Stock breakdown — 4 mini-cards in a responsive grid
-        m.jsx("div", {
-          className: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 p-4",
-          children: [
-            renderStockCard("New Stock", row.newStock, "purple"),
-            renderStockCard("Repaired Stock", row.repairedStock, "blue"),
-            renderStockCard("R&R Stock", row.rrStock, "orange"),
-            renderStockCard("Faulty", row.faulty, "red")
-          ]
-        }),
-
-        // Remark section — input + save + screenshot + copy buttons
-        m.jsxs("div", {
-          className: "p-4 border-t border-gray-100 bg-gray-50/30",
-          children: [
-            m.jsx(yt, {
-              value: draft,
-              onChange: t => updateDraft(key, t.target.value),
-              placeholder: "Type a remark for this report (e.g. verified at close of business, numbers look correct)...",
-              className: "w-full h-10 text-xs mb-2"
-            }),
-            m.jsxs("div", {
-              className: "flex flex-wrap items-center gap-2",
-              children: [
-                // Save / Update remark button
-                m.jsxs(ht, {
-                  size: "sm",
-                  onClick: () => handleSaveRemark(row),
-                  disabled: saving[key] || !isDirty,
-                  className: `h-9 text-xs font-bold ${isDirty ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "bg-gray-100 text-gray-400 cursor-not-allowed"}`,
-                  children: [m.jsx(lj, { size: 14, className: "mr-1" }), saving[key] ? "Saving..." : (existing ? "Update Remark" : "Save Remark")]
-                }),
-                // Screenshot button — downloads a PNG of the card for sharing
-                m.jsxs(ht, {
-                  size: "sm",
-                  variant: "outline",
-                  onClick: () => screenshotCard(key, `verification_${row.type}_${row.userName}_${row.date}.png`.replace(/\s+/g, "_")),
-                  disabled: saving[key],
-                  className: "h-9 text-xs border-purple-200 text-purple-600 hover:bg-purple-50",
-                  title: "Download a screenshot of this card to share with the MO/PO",
-                  children: [m.jsx(cp2, { size: 14, className: "mr-1" }), "Screenshot"]
-                }),
-                // Copy summary button — copies formatted text for WhatsApp/email
-                m.jsxs(ht, {
-                  size: "sm",
-                  variant: "outline",
-                  onClick: () => copyCardSummary(row),
-                  disabled: saving[key],
-                  className: "h-9 text-xs border-blue-200 text-blue-600 hover:bg-blue-50",
-                  title: "Copy a text summary to clipboard for quick sharing",
-                  children: [m.jsx(uj, { size: 14, className: "mr-1" }), "Copy Summary"]
+                    }, st.key + "_" + f.key);
+                  }))
                 })
               ]
             })
-          ]
-        })
-      ]
+          }),
+          // Discrepancy write-ups (only mismatches)
+          isMismatch && m.jsx("div", {
+            style: { padding: "8px 12px", backgroundColor: "#fef2f2", borderTop: "1px solid #fecaca" },
+            children: m.jsxs("div", { style: { display: "flex", flexDirection: "column", gap: "2px" }, children: [
+              ...stockTypes.flatMap(st => fields.map(f => {
+                const baseVal = baseline[st.key][f.key];
+                const subVal = submitted[st.key][f.key];
+                if (baseVal === subVal) return null;
+                const stockLabel = st.label.replace(" Stock", "");
+                const disc = discrepancyLine(stockLabel, f.label, baseVal, subVal);
+                return m.jsxs("p", { style: { fontSize: "10px", fontWeight: 600, color: "#b91c1c", margin: 0 }, children: ["⚠ ", disc] }, st.key + "_" + f.key + "_disc");
+              })).filter(Boolean)
+            ]})
+          }),
+          // Action buttons
+          m.jsxs("div", {
+            className: "p-3 border-t border-gray-100 flex items-center gap-2",
+            style: { backgroundColor: "#f9fafb" },
+            children: [
+              m.jsxs(ht, { size: "sm", variant: "outline", onClick: () => screenshotCard(key, `verification_${reportType}_${row.officer_name}_${row.report_date}.png`.replace(/\s+/g, "_")), className: "h-8 text-xs border-purple-200 text-purple-600 hover:bg-purple-50", children: [m.jsx(cp2, { size: 12, className: "mr-1" }), "Screenshot"] }),
+              m.jsxs(ht, { size: "sm", variant: "outline", onClick: () => copyCardSummary(row, true), className: "h-8 text-xs border-blue-200 text-blue-600 hover:bg-blue-50", children: [m.jsx(uj, { size: 12, className: "mr-1" }), "Copy"] })
+            ]
+          })
+        ]
       })
     }, key);
   };
@@ -59713,160 +59984,105 @@ function ReportVerificationPage() {
   return m.jsxs("div", {
     className: "space-y-5",
     children: [
-      // Page header
-      m.jsxs("div", {
-        children: [m.jsxs("h1", {
-          className: "text-xl font-extrabold text-gray-800 flex items-center gap-2",
-          children: [m.jsx(ao, { className: "text-emerald-600", size: 22 }), "Report Verification"]
-        }), m.jsx("p", {
-          className: "text-xs text-gray-400 mt-1",
-          children: isManager
-            ? "Verify MO and PO stock reports at close of business — all regions (manager view)"
-            : "Verify MO and PO stock reports from your assigned regions — reports from other regions are hidden"
-        })]
-      }),
+      m.jsxs("div", { children: [
+        m.jsxs("h1", { className: "text-xl font-extrabold text-gray-800 flex items-center gap-2", children: [m.jsx(ao, { className: "text-emerald-600", size: 22 }), "Report Verification"] }),
+        m.jsx("p", { className: "text-xs text-gray-400 mt-1", children: "Fill POSP stock for your markets first, then verify MO and PO reports against them. Mismatches show a discrepancy write-up." })
+      ]}),
 
-      // Region banner
-      noMarketsAssigned ? m.jsxs("div", {
-        className: "bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3",
-        children: [m.jsx(d2, { className: "text-red-500 shrink-0 mt-0.5", size: 18 }),
-          m.jsxs("div", {
-            children: [m.jsx("p", {
-              className: "text-sm font-bold text-red-700",
-              children: "No markets assigned"
-            }), m.jsx("p", {
-              className: "text-xs text-red-600 mt-1 leading-relaxed",
-              children: "You have no markets assigned, so no reports are visible. Contact an admin to assign markets in your region."
-            })]
-          })]
-      }) : (!isManager && myRegions.size > 0 && m.jsxs("div", {
-        className: "bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center gap-2",
-        children: [m.jsx(ys, { className: "text-emerald-500 shrink-0", size: 16 }),
-          m.jsxs("p", {
-            className: "text-xs text-emerald-700 font-medium",
-            children: ["Region access: ", m.jsx("span", { className: "font-bold", children: Array.from(myRegions).join(", ") })]
-          })]
-      })),
+      noMarketsAssigned ? m.jsxs("div", { className: "bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3", children: [
+        m.jsx(d2, { className: "text-red-500 shrink-0 mt-0.5", size: 18 }),
+        m.jsxs("div", { children: [
+          m.jsx("p", { className: "text-sm font-bold text-red-700", children: "No markets assigned" }),
+          m.jsx("p", { className: "text-xs text-red-600 mt-1 leading-relaxed", children: "You have no markets assigned. Contact an admin to assign markets in your region." })
+        ]})
+      ]}) : (!isManager && myRegions.size > 0 && m.jsxs("div", { className: "bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center gap-2", children: [
+        m.jsx(ys, { className: "text-emerald-500 shrink-0", size: 16 }),
+        m.jsxs("p", { className: "text-xs text-emerald-700 font-medium", children: ["Region access: ", m.jsx("span", { className: "font-bold", children: Array.from(myRegions).join(", ") })] })
+      ]})),
 
-      // Summary stat cards (4 cards)
       !noMarketsAssigned && m.jsx("div", {
         className: "grid grid-cols-2 lg:grid-cols-4 gap-3",
         children: [
-          m.jsxs(Je, {
-            className: "p-4 flex items-center gap-3",
-            children: [m.jsx("div", { className: "w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center", children: m.jsx(ao, { className: "text-emerald-600", size: 18 }) }),
-              m.jsxs("div", { children: [m.jsx("p", { className: "text-2xl font-extrabold text-gray-800", children: summary.total }), m.jsx("p", { className: "text-[10px] font-bold text-gray-400 uppercase", children: "Total Reports" })] })]
-          }),
-          m.jsxs(Je, {
-            className: "p-4 flex items-center gap-3",
-            children: [m.jsx("div", { className: "w-10 h-10 rounded-lg bg-cyan-100 flex items-center justify-center", children: m.jsx(qi, { className: "text-cyan-600", size: 18 }) }),
-              m.jsxs("div", { children: [m.jsx("p", { className: "text-2xl font-extrabold text-gray-800", children: summary.mo + summary.po }), m.jsx("p", { className: "text-[10px] font-bold text-gray-400 uppercase", children: summary.mo + " MO · " + summary.po + " PO" })] })]
-          }),
-          m.jsxs(Je, {
-            className: "p-4 flex items-center gap-3",
-            children: [m.jsx("div", { className: "w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center", children: m.jsx(o2, { className: "text-amber-600", size: 18 }) }),
-              m.jsxs("div", { children: [m.jsx("p", { className: "text-2xl font-extrabold text-gray-800", children: summary.pending }), m.jsx("p", { className: "text-[10px] font-bold text-gray-400 uppercase", children: "Pending Review" })] })]
-          }),
-          m.jsxs(Je, {
-            className: "p-4 flex items-center gap-3",
-            children: [m.jsx("div", { className: "w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center", children: m.jsx(ys, { className: "text-purple-600", size: 18 }) }),
-              m.jsxs("div", { children: [m.jsx("p", { className: "text-2xl font-extrabold text-gray-800", children: summary.remarked }), m.jsx("p", { className: "text-[10px] font-bold text-gray-400 uppercase", children: "Remarks Added" })] })]
-          })
+          m.jsxs(Je, { className: "p-4 flex items-center gap-3", children: [m.jsx("div", { className: "w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center", children: m.jsx(qi, { className: "text-indigo-600", size: 18 }) }), m.jsxs("div", { children: [m.jsx("p", { className: "text-2xl font-extrabold text-gray-800", children: summary.baselines }), m.jsx("p", { className: "text-[10px] font-bold text-gray-400 uppercase", children: "POSP Stock Set" })] })] }),
+          m.jsxs(Je, { className: "p-4 flex items-center gap-3", children: [m.jsx("div", { className: "w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center", children: m.jsx(ys, { className: "text-emerald-600", size: 18 }) }), m.jsxs("div", { children: [m.jsx("p", { className: "text-2xl font-extrabold text-gray-800", children: summary.matched }), m.jsx("p", { className: "text-[10px] font-bold text-gray-400 uppercase", children: "Fully Matched" })] })] }),
+          m.jsxs(Je, { className: "p-4 flex items-center gap-3", children: [m.jsx("div", { className: "w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center", children: m.jsx(d2, { className: "text-red-600", size: 18 }) }), m.jsxs("div", { children: [m.jsx("p", { className: "text-2xl font-extrabold text-gray-800", children: summary.mismatch }), m.jsx("p", { className: "text-[10px] font-bold text-gray-400 uppercase", children: "Mismatches" })] })] }),
+          m.jsxs(Je, { className: "p-4 flex items-center gap-3", children: [m.jsx("div", { className: "w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center", children: m.jsx(o2, { className: "text-amber-600", size: 18 }) }), m.jsxs("div", { children: [m.jsx("p", { className: "text-2xl font-extrabold text-gray-800", children: summary.noBaseline }), m.jsx("p", { className: "text-[10px] font-bold text-gray-400 uppercase", children: "No POSP Stock" })] })] })
         ]
       }),
 
-      // Controls bar — date + type filter + copy all
       m.jsxs(Je, {
         className: "p-4",
         children: [m.jsxs("div", {
           className: "flex flex-wrap items-end gap-3 justify-between",
-          children: [m.jsxs("div", {
-            className: "flex flex-wrap items-end gap-3",
-            children: [m.jsxs("div", {
-              className: "flex flex-col gap-1",
-              children: [m.jsx(Qe, { className: "text-[10px] font-bold text-gray-400 uppercase", children: "Date" }), m.jsx(yt, {
-                type: "date",
-                value: dateStr,
-                onChange: t => setDateStr(t.target.value),
-                className: "h-9 w-40 text-xs"
-              })]
-            }), m.jsxs("div", {
-              className: "flex flex-col gap-1",
-              children: [m.jsx(Qe, { className: "text-[10px] font-bold text-gray-400 uppercase", children: "Report Type" }), m.jsxs(qn, {
-                value: filterType,
-                onValueChange: v => setFilterType(v),
-                children: [m.jsx(Kn, { children: m.jsx(Yn, { placeholder: "All Types" }) }), m.jsxs(Xn, {
-                  children: [m.jsx(ft, { value: "all", children: "All Types" }), m.jsx(ft, { value: "MO", children: "MO Reports" }), m.jsx(ft, { value: "PO", children: "PO Reports" })]
-                })]
-              })]
-            }), m.jsx(ht, {
-              size: "sm",
-              variant: "outline",
-              onClick: () => setDateStr(new Date().toISOString().split("T")[0]),
-              className: "h-9 text-xs",
-              children: "Today"
-            }), filteredRows.length > 0 && m.jsxs(ht, {
-              size: "sm",
-              variant: "outline",
-              onClick: async () => {
-                const lines = [`Report Verification Summary — ${dateStr}`, `(${filteredRows.length} reports)`, ``];
-                filteredRows.forEach((row, i) => {
-                  const ex = remarks[`${row.type}:${row.id}`];
-                  const remark = (ex?.remark || remarkDrafts[`${row.type}:${row.id}`] || "").trim();
-                  lines.push(`${i + 1}. [${row.type}] ${row.userName} — ${row.region || "—"}`);
-                  lines.push(`   New: ${row.newStock.total} (S${row.newStock.smart}/T${row.newStock.tpos}/M${row.newStock.mpos}) · Rep: ${row.repairedStock.total} · R&R: ${row.rrStock.total} · Faulty: ${row.faulty.total}`);
-                  lines.push(`   Remark: ${remark || "(none)"}`);
-                  lines.push(``);
-                });
-                try {
-                  const ok = await copyReportToClipboard(lines.join("\n"));
-                  ok ? ui.success(`Copied ${filteredRows.length} report summaries to clipboard`) : ui.info("Copy failed");
-                } catch { ui.error("Failed to copy"); }
-              },
-              className: "h-9 text-xs border-blue-200 text-blue-600 hover:bg-blue-50",
-              children: [m.jsx(cp2, { size: 14, className: "mr-1" }), "Copy All"]
-            })]
-          })]
-        })]
-      }),
+          children: [m.jsxs("div", { className: "flex flex-wrap items-end gap-3", children: [
+            m.jsxs("div", { className: "flex flex-col gap-1", children: [m.jsx(Qe, { className: "text-[10px] font-bold text-gray-400 uppercase", children: "Date" }), m.jsx(yt, { type: "date", value: dateStr, onChange: t => setDateStr(t.target.value), className: "h-9 w-40 text-xs" })] }),
+            m.jsx(ht, { size: "sm", variant: "outline", onClick: () => setDateStr(new Date().toISOString().split("T")[0]), className: "h-9 text-xs", children: "Today" })
+          ]}),
+          m.jsxs("div", { className: "flex gap-1 bg-gray-100 p-0.5 rounded-lg", children: [
+            m.jsx("button", { onClick: () => setTab("baseline"), className: `px-3 py-1.5 text-xs font-bold rounded-md transition-all ${tab === "baseline" ? "bg-white text-indigo-700 shadow-sm" : "text-gray-400"}`, children: "POSP Stock" }),
+            m.jsx("button", { onClick: () => setTab("results"), className: `px-3 py-1.5 text-xs font-bold rounded-md transition-all ${tab === "results" ? "bg-white text-emerald-700 shadow-sm" : "text-gray-400"}`, children: "Match Results" })
+          ]})
+        ]})
+      ]}),
 
-      // Reports list — card-based layout
-      m.jsx("div", {
-        className: "space-y-3",
-        children: loading ? m.jsx("div", {
-          className: "space-y-3",
-          children: Array.from({ length: 4 }).map((_, i) => m.jsx(Je, { className: "p-4", children: m.jsx(Zn, { className: "h-32" }) }, i))
-        }) : filteredRows.length === 0 ? m.jsxs(Je, {
-          className: "p-10 text-center",
-          children: [m.jsx("div", {
-            className: "w-14 h-14 mx-auto mb-3 rounded-full bg-gray-100 flex items-center justify-center",
-            children: m.jsx(ao, { className: "text-gray-300", size: 28 })
-          }), m.jsx("p", {
-            className: "text-sm font-medium text-gray-500",
-            children: noMarketsAssigned ? "No markets assigned — nothing to verify" : "No reports submitted on this date"
-          }), !noMarketsAssigned && m.jsx("p", {
-            className: "text-xs text-gray-400 mt-1",
-            children: "Try selecting a different date above"
-          })]
-        }) : m.jsx(m.Fragment, {
-          children: [
-            // Section label
-            m.jsxs("div", {
-              className: "flex items-center gap-2 mb-1",
-              children: [m.jsx(ao, { className: "text-emerald-500", size: 16 }), m.jsxs("h3", {
-                className: "text-sm font-bold text-gray-800",
-                children: ["Stock Verification — ", dateStr, m.jsxs("span", { className: "text-xs font-normal text-gray-400 ml-2", children: ["(", filteredRows.length, " report", filteredRows.length === 1 ? "" : "s", ")"] })]
-              })]
-            }),
-            // Report cards
-            ...filteredRows.map(row => renderReportCard(row))
-          ]
-        })
-      })
+      loading ? m.jsx("div", { className: "space-y-3", children: Array.from({ length: 4 }).map((_, i) => m.jsx(Je, { className: "p-4", children: m.jsx(Zn, { className: "h-32" }) }, i)) })
+      : tab === "baseline" ? (
+        m.jsxs("div", { className: "space-y-3", children: [
+          m.jsxs("div", { className: "flex items-center gap-2 mb-1", children: [
+            m.jsx(qi, { className: "text-indigo-500", size: 16 }),
+            m.jsxs("h3", { className: "text-sm font-bold text-gray-800", children: ["POSP Stock for ", dateStr, m.jsxs("span", { className: "text-xs font-normal text-gray-400 ml-2", children: ["(", myMarkets.length, " market", myMarkets.length === 1 ? "" : "s", ")"] })] })
+          ]}),
+          myMarkets.length === 0 ? m.jsxs(Je, { className: "p-10 text-center", children: [
+            m.jsx("div", { className: "w-14 h-14 mx-auto mb-3 rounded-full bg-gray-100 flex items-center justify-center", children: m.jsx(qi, { className: "text-gray-300", size: 28 }) }),
+            m.jsx("p", { className: "text-sm font-medium text-gray-500", children: noMarketsAssigned ? "No markets assigned" : "No MO markets to set POSP stock for" })
+          ]}) : m.jsx("div", { className: "grid grid-cols-1 lg:grid-cols-2 gap-3", children: myMarkets.map(mk => renderBaselineCard(mk)) })
+        ]})
+      ) : (
+        m.jsxs("div", { className: "space-y-3", children: [
+          m.jsxs("div", { className: "flex items-center gap-2 mb-1", children: [
+            m.jsx(ao, { className: "text-emerald-500", size: 16 }),
+            m.jsxs("h3", { className: "text-sm font-bold text-gray-800", children: ["Match Results — ", dateStr, m.jsxs("span", { className: "text-xs font-normal text-gray-400 ml-2", children: ["(", enrichedMatches.length, " report", enrichedMatches.length === 1 ? "" : "s", " · ", summary.mo, " MO · ", summary.po, " PO)"] })] })
+          ]}),
+          enrichedMatches.length === 0 ? m.jsxs(Je, { className: "p-10 text-center", children: [
+            m.jsx("div", { className: "w-14 h-14 mx-auto mb-3 rounded-full bg-gray-100 flex items-center justify-center", children: m.jsx(ao, { className: "text-gray-300", size: 28 }) }),
+            m.jsx("p", { className: "text-sm font-medium text-gray-500", children: "No MO or PO reports submitted on this date" })
+          ]}) : m.jsx(m.Fragment, { children: enrichedMatches.map(row => renderMatchCard(row)) }),
+
+          // === Summary section (always visible at the bottom) ===
+          enrichedMatches.length > 0 && m.jsxs(Je, {
+            className: "p-5 border-t-2 border-blue-200",
+            children: [
+              m.jsxs("div", {
+                className: "flex items-center justify-between mb-3",
+                children: [
+                  m.jsxs("div", { children: [
+                    m.jsxs("h3", { className: "text-sm font-bold text-gray-800 flex items-center gap-2", children: [m.jsx(uj, { className: "text-blue-500", size: 16 }), "Summary for Group Sharing"] }),
+                    m.jsx("p", { className: "text-[11px] text-gray-400 mt-0.5", children: "Copy and paste into WhatsApp/Telegram to share verification results" })
+                  ]}),
+                  m.jsxs(ht, {
+                    size: "sm",
+                    onClick: async () => {
+                      try {
+                        const ok = await copyReportToClipboard(mismatchSummaryText);
+                        ok ? ui.success("Summary copied to clipboard") : ui.info("Copy failed");
+                      } catch { ui.error("Failed to copy"); }
+                    },
+                    className: "h-9 text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold",
+                    children: [m.jsx(cp2, { size: 14, className: "mr-1" }), "Copy Summary"]
+                  })
+                ]
+              }),
+              m.jsx("pre", {
+                style: { backgroundColor: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "12px", fontSize: "11px", lineHeight: "1.5", color: "#334155", whiteSpace: "pre-wrap", wordBreak: "break-word", fontFamily: "monospace", margin: 0, maxHeight: "400px", overflowY: "auto" },
+                children: mismatchSummaryText
+              })
+            ]
+          })
+        ]})
+      )
     ]
   });
 }
-
 
 
 // ============================================================================
