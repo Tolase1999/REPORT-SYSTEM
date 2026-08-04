@@ -59467,10 +59467,16 @@ function ReportVerificationPage() {
       const bDrafts = {};
       (baselinesData || []).forEach(b => {
         const d = b.baseline_data || {};
+        // Merge repaired_stock + rr_stock into normal_stock
+        const repSmart = Number(d.repaired_stock?.smart) || 0;
+        const repTpos = Number(d.repaired_stock?.tpos) || 0;
+        const repMpos = Number(d.repaired_stock?.mpos) || 0;
+        const rrSmart = Number(d.rr_stock?.smart) || 0;
+        const rrTpos = Number(d.rr_stock?.tpos) || 0;
+        const rrMpos = Number(d.rr_stock?.mpos) || 0;
         bDrafts[b.market_id] = {
           new_stock: { smart: String(d.new_stock?.smart ?? ""), tpos: String(d.new_stock?.tpos ?? ""), mpos: String(d.new_stock?.mpos ?? "") },
-          repaired_stock: { smart: String(d.repaired_stock?.smart ?? ""), tpos: String(d.repaired_stock?.tpos ?? ""), mpos: String(d.repaired_stock?.mpos ?? "") },
-          rr_stock: { smart: String(d.rr_stock?.smart ?? ""), tpos: String(d.rr_stock?.tpos ?? ""), mpos: String(d.rr_stock?.mpos ?? "") },
+          normal_stock: { smart: String(repSmart + rrSmart), tpos: String(repTpos + rrTpos), mpos: String(repMpos + rrMpos) },
           faulty: { smart: String(d.faulty?.smart ?? ""), tpos: String(d.faulty?.tpos ?? ""), mpos: String(d.faulty?.mpos ?? "") }
         };
       });
@@ -59496,14 +59502,13 @@ function ReportVerificationPage() {
     return assignedMarkets || [];
   }, [markets, assignedMarkets, isManager]);
 
-  // Update a baseline draft field. stockType = "new_stock" | "repaired_stock" | "rr_stock" | "faulty"
+  // Update a baseline draft field. stockType = "new_stock" | "normal_stock" | "faulty"
   // field = "smart" | "tpos" | "mpos"
   const updateBaselineDraft = (marketId, stockType, field, value) => {
     setBaselineDrafts(prev => {
       const existing = prev[marketId] || {
         new_stock: { smart: "", tpos: "", mpos: "" },
-        repaired_stock: { smart: "", tpos: "", mpos: "" },
-        rr_stock: { smart: "", tpos: "", mpos: "" },
+        normal_stock: { smart: "", tpos: "", mpos: "" },
         faulty: { smart: "", tpos: "", mpos: "" }
       };
       return {
@@ -59519,10 +59524,13 @@ function ReportVerificationPage() {
   const handleSaveBaseline = async (marketId) => {
     const draft = baselineDrafts[marketId] || {};
     const toNum = v => { const n = parseInt(v, 10); return isNaN(n) ? 0 : n; };
+    // normal_stock = Repaired + R&R combined. Store under repaired_stock,
+    // and set rr_stock to zeros (the SQL RPC adds them together for totals).
+    const normalStock = draft.normal_stock || { smart: 0, tpos: 0, mpos: 0 };
     const baselineData = {
       new_stock: { smart: toNum(draft.new_stock?.smart), tpos: toNum(draft.new_stock?.tpos), mpos: toNum(draft.new_stock?.mpos) },
-      repaired_stock: { smart: toNum(draft.repaired_stock?.smart), tpos: toNum(draft.repaired_stock?.tpos), mpos: toNum(draft.repaired_stock?.mpos) },
-      rr_stock: { smart: toNum(draft.rr_stock?.smart), tpos: toNum(draft.rr_stock?.tpos), mpos: toNum(draft.rr_stock?.mpos) },
+      repaired_stock: { smart: toNum(normalStock.smart), tpos: toNum(normalStock.tpos), mpos: toNum(normalStock.mpos) },
+      rr_stock: { smart: 0, tpos: 0, mpos: 0 },
       faulty: { smart: toNum(draft.faulty?.smart), tpos: toNum(draft.faulty?.tpos), mpos: toNum(draft.faulty?.mpos) }
     };
     setSavingBaseline(prev => ({ ...prev, [marketId]: !0 }));
@@ -59674,27 +59682,31 @@ function ReportVerificationPage() {
     const rd = row.report_data || {};
     const bd = row.baseline_data || {};
     const norm = v => ({ smart: Number(v?.smart) || 0, tpos: Number(v?.tpos) || 0, mpos: Number(v?.mpos) || 0 });
+    // Helper: merge two stock objects into one (for Repaired + R&R = Normal)
+    const merge = (a, b) => ({
+      smart: (a.smart || 0) + (b.smart || 0),
+      tpos: (a.tpos || 0) + (b.tpos || 0),
+      mpos: (a.mpos || 0) + (b.mpos || 0)
+    });
     let sub;
     if (isMO) {
-      // Use robust matching — tries system key first, then task label matching
+      const rep = findMOStockByLabel(rd, tasks, /rep.*stock|repaired.*stock|stock.*rep/i, "stock_rep");
+      const rr = findMOStockByLabel(rd, tasks, /(?:r&r|rr)\s*stock|stock\s*(?:rr|r&r)/i, "stock_rr");
       sub = {
         new_stock: findMOStockByLabel(rd, tasks, /new\s*stock|brand\s*new/i, "stock_new"),
-        repaired_stock: findMOStockByLabel(rd, tasks, /rep.*stock|repaired.*stock|stock.*rep/i, "stock_rep"),
-        rr_stock: findMOStockByLabel(rd, tasks, /(?:r&r|rr)\s*stock|stock\s*(?:rr|r&r)/i, "stock_rr"),
+        normal_stock: merge(rep, rr),  // Repaired + R&R combined
         faulty: findMOStockByLabel(rd, tasks, /faulty/i, "faulty")
       };
     } else {
       sub = {
         new_stock: norm(rd.brand_new_stock),
-        repaired_stock: norm(rd.repaired_stock),
-        rr_stock: norm(rd.rr_stock),
+        normal_stock: merge(norm(rd.repaired_stock), norm(rd.rr_stock)),  // Repaired + R&R combined
         faulty: norm(rd.total_faulty)
       };
     }
     const base = {
       new_stock: norm(bd.new_stock),
-      repaired_stock: norm(bd.repaired_stock),
-      rr_stock: norm(bd.rr_stock),
+      normal_stock: merge(norm(bd.repaired_stock), norm(bd.rr_stock)),  // Repaired + R&R combined
       faulty: norm(bd.faulty)
     };
     return { submitted: sub, baseline: base };
@@ -59716,8 +59728,7 @@ function ReportVerificationPage() {
     const { submitted, baseline } = extractMatchBreakdown(row);
     const stockTypes = [
       { key: "new_stock", label: "New" },
-      { key: "repaired_stock", label: "Repaired" },
-      { key: "rr_stock", label: "R&R" },
+      { key: "normal_stock", label: "Normal" },
       { key: "faulty", label: "Faulty" }
     ];
     const fields = [
@@ -59752,13 +59763,12 @@ function ReportVerificationPage() {
     return { total: enrichedMatches.length, mo: moRows.length, po: poRows.length, matched, mismatch, noBaseline, baselines: baselines.length };
   }, [enrichedMatches, baselines]);
 
-  // === POSP Stock entry card — full Smart/TPOS/MPOS breakdown per stock type ===
+  // === POSP Stock entry card — 3 stock types (New, Normal=Repaired+R&R, Faulty) ===
   const renderBaselineCard = (mk) => {
     const marketId = mk.id;
     const draft = baselineDrafts[marketId] || {
       new_stock: { smart: "", tpos: "", mpos: "" },
-      repaired_stock: { smart: "", tpos: "", mpos: "" },
-      rr_stock: { smart: "", tpos: "", mpos: "" },
+      normal_stock: { smart: "", tpos: "", mpos: "" },
       faulty: { smart: "", tpos: "", mpos: "" }
     };
     const existing = baselinesByMarket.get(marketId);
@@ -59770,7 +59780,6 @@ function ReportVerificationPage() {
       return m.jsxs("div", {
         style: { borderRadius: "10px", overflow: "hidden", border: `2px solid ${themeColor.border}` },
         children: [
-          // Header bar
           m.jsxs("div", {
             style: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 10px", backgroundColor: themeColor.headerBg },
             children: [
@@ -59778,7 +59787,6 @@ function ReportVerificationPage() {
               m.jsx("span", { style: { fontSize: "10px", fontWeight: 800, color: "#ffffff", backgroundColor: "rgba(0,0,0,0.25)", borderRadius: "4px", padding: "1px 6px" }, children: total })
             ]
           }),
-          // 3 inputs: Smart / TPOS / MPOS
           m.jsx("div", {
             style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", backgroundColor: themeColor.lightBg },
             children: ["smart", "tpos", "mpos"].map((field, i) => m.jsxs("div", {
@@ -59803,14 +59811,12 @@ function ReportVerificationPage() {
     const themes = {
       purple: { headerBg: "#7c3aed", border: "#ddd6fe", lightBg: "#faf5ff" },
       blue:   { headerBg: "#2563eb", border: "#bfdbfe", lightBg: "#eff6ff" },
-      orange: { headerBg: "#ea580c", border: "#fed7aa", lightBg: "#fff7ed" },
       red:    { headerBg: "#dc2626", border: "#fecaca", lightBg: "#fef2f2" }
     };
 
     return m.jsxs(Je, {
       className: "p-5 border-l-4 border-l-indigo-500",
       children: [
-        // Card header
         m.jsxs("div", {
           className: "flex items-center justify-between mb-4",
           children: [
@@ -59821,17 +59827,15 @@ function ReportVerificationPage() {
             existing && m.jsx("span", { className: "text-[9px] font-bold uppercase px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700", children: "POSP Stock Set" })
           ]
         }),
-        // 4 stock type sections in a 2×2 grid
+        // 3 stock type sections (New, Normal=Repaired+R&R, Faulty)
         m.jsx("div", {
-          className: "grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4",
+          className: "grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4",
           children: [
             renderStockSection("new_stock", "New Stock", themes.purple),
-            renderStockSection("repaired_stock", "Repaired Stock", themes.blue),
-            renderStockSection("rr_stock", "R&R Stock", themes.orange),
+            renderStockSection("normal_stock", "Normal (Rep+R&R)", themes.blue),
             renderStockSection("faulty", "Faulty", themes.red)
           ]
         }),
-        // Save button — large and prominent, always visible
         m.jsx("div", {
           className: "flex justify-end pt-2 border-t border-gray-100",
           children: m.jsxs("button", {
@@ -59874,11 +59878,10 @@ function ReportVerificationPage() {
     const badgeFg = isMatched ? "#15803d" : isMismatch ? "#b91c1c" : "#b45309";
     const badgeLabel = isMatched ? "Fully Matched" : isMismatch ? "Mismatch" : "No POSP Stock";
 
-    // Build table rows: 4 stock types × 3 fields = 12 rows
+    // Build table rows: 3 stock types × 3 fields = 9 rows
     const stockTypes = [
       { key: "new_stock", label: "New Stock" },
-      { key: "repaired_stock", label: "Repaired Stock" },
-      { key: "rr_stock", label: "R&R Stock" },
+      { key: "normal_stock", label: "Normal Stock (Rep+R&R)" },
       { key: "faulty", label: "Faulty" }
     ];
     const fields = [
@@ -59961,7 +59964,7 @@ function ReportVerificationPage() {
                 const baseVal = baseline[st.key][f.key];
                 const subVal = submitted[st.key][f.key];
                 if (baseVal === subVal) return null;
-                const stockLabel = st.label.replace(" Stock", "");
+                const stockLabel = st.label.replace(/ Stock.*$/, "");
                 const disc = discrepancyLine(stockLabel, f.label, baseVal, subVal);
                 return m.jsxs("p", { style: { fontSize: "10px", fontWeight: 600, color: "#b91c1c", margin: 0 }, children: ["⚠ ", disc] }, st.key + "_" + f.key + "_disc");
               })).filter(Boolean)
