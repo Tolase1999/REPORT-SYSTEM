@@ -59682,7 +59682,7 @@ function ReportVerificationPage() {
     const rd = row.report_data || {};
     const bd = row.baseline_data || {};
     const norm = v => ({ smart: Number(v?.smart) || 0, tpos: Number(v?.tpos) || 0, mpos: Number(v?.mpos) || 0 });
-    // Helper: merge two stock objects into one (for Repaired + R&R = Normal)
+    // Helper: merge two stock objects into one (for adding fields together)
     const merge = (a, b) => ({
       smart: (a.smart || 0) + (b.smart || 0),
       tpos: (a.tpos || 0) + (b.tpos || 0),
@@ -59692,18 +59692,42 @@ function ReportVerificationPage() {
     if (isMO) {
       const rep = findMOStockByLabel(rd, tasks, /rep.*stock|repaired.*stock|stock.*rep/i, "stock_rep");
       const rr = findMOStockByLabel(rd, tasks, /(?:r&r|rr)\s*stock|stock\s*(?:rr|r&r)/i, "stock_rr");
+      const newStock = findMOStockByLabel(rd, tasks, /new\s*stock|brand\s*new/i, "stock_new");
+      // KA stock (label "KA STOCK IN OFFICE", UUID fb589c57-...).
+      // For MO reports it may be stored under data.custom[KA_UUID] as a NUMBER,
+      // or as a {smart,tpos,mpos} object. Handle both cases.
+      const KA_UUID = "fb589c57-cd00-4c24-b440-a0dbc94c8fdf";
+      const kaRaw = (rd.custom && rd.custom[KA_UUID]) || rd[KA_UUID];
+      let kaStock;
+      if (typeof kaRaw === "number") {
+        kaStock = { smart: kaRaw, tpos: 0, mpos: 0 };
+      } else if (kaRaw && typeof kaRaw === "object") {
+        kaStock = norm(kaRaw);
+      } else {
+        // Fall back to label-based search (handles task.key variants)
+        kaStock = findMOStockByLabel(rd, tasks, /ka\s*stock/i, "stock_ka");
+      }
       sub = {
-        new_stock: findMOStockByLabel(rd, tasks, /new\s*stock|brand\s*new/i, "stock_new"),
+        new_stock: merge(newStock, kaStock),  // Brand New + KA combined
         normal_stock: merge(rep, rr),  // Repaired + R&R combined
         faulty: findMOStockByLabel(rd, tasks, /faulty/i, "faulty")
       };
     } else {
+      // PO reports: KA stock is stored under data.custom[KA_UUID] as a NUMBER
+      // (not a {smart,tpos,mpos} object). Add it to the smart field of New Stock.
+      const KA_UUID = "fb589c57-cd00-4c24-b440-a0dbc94c8fdf";
+      const kaRaw = (rd.custom && rd.custom[KA_UUID]) || rd[KA_UUID];
+      const kaNum = Number(kaRaw) || 0;
+      const kaStock = { smart: kaNum, tpos: 0, mpos: 0 };
+      const newStock = norm(rd.brand_new_stock);
       sub = {
-        new_stock: norm(rd.brand_new_stock),
+        new_stock: merge(newStock, kaStock),  // Brand New + KA combined (KA added to smart)
         normal_stock: merge(norm(rd.repaired_stock), norm(rd.rr_stock)),  // Repaired + R&R combined
         faulty: norm(rd.total_faulty)
       };
     }
+    // Baseline (POSP Stock) — KA is NOT entered separately by supervisor,
+    // so baseline new_stock stays as-is (supervisor's New Stock covers it)
     const base = {
       new_stock: norm(bd.new_stock),
       normal_stock: merge(norm(bd.repaired_stock), norm(bd.rr_stock)),  // Repaired + R&R combined
