@@ -57848,7 +57848,7 @@ const Dz = Ne.forwardRef(function(t, r) {
 function Lz() {
   const {
     user: e
-  } = Qn(), [t, r] = E.useState([]), [n, s] = E.useState([]), [o, l] = E.useState(null), [u, d] = E.useState(!1), [, h] = E.useState(!0), [p, g] = E.useState(!1), [y, b] = E.useState({}), _ = new Date().toISOString().split("T")[0], w = new Date().toLocaleDateString("en-GB", {
+  } = Qn(), [t, r] = E.useState([]), [n, s] = E.useState([]), [o, l] = E.useState(null), [u, d] = E.useState(!1), [, h] = E.useState(!0), [p, g] = E.useState(!1), [y, b] = E.useState({}), [previewData, setPreviewData] = E.useState(null), _ = new Date().toISOString().split("T")[0], w = new Date().toLocaleDateString("en-GB", {
     day: "numeric",
     month: "long",
     year: "numeric"
@@ -57890,6 +57890,24 @@ function Lz() {
       }
       g(!0);
       try {
+        // STEP 1: Show preview modal — do NOT save to database yet.
+        // The MO reviews the preview, then clicks "Confirm" to actually submit.
+        setPreviewData({
+          ...y,
+          moName: e.name,
+          city: t.find(R => R.id === e.market_id)?.city || "",
+          marketId: e.market_id
+        });
+      } catch (N) {
+        ui.error(N.message || "Failed to preview")
+      } finally {
+        g(!1)
+      }
+    },
+    // STEP 2: Actually submit the report to the database (called when MO clicks Confirm)
+    confirmSubmit = async () => {
+      g(!0);
+      try {
         const N = new Date().toLocaleTimeString("en-GB", {
             hour: "2-digit",
             minute: "2-digit"
@@ -57900,12 +57918,7 @@ function Lz() {
             submitted_at: N,
             user_id: e.id,
             market_id: e.market_id,
-            data: {
-              ...y,
-              moName: e.name,
-              city: t.find(R => R.id === e.market_id)?.city || "",
-              marketId: e.market_id
-            }
+            data: previewData
           };
         // Always re-check for an existing report right before submitting.
         // This prevents duplicate entries if the initial Ld() failed or
@@ -57931,6 +57944,7 @@ function Lz() {
           _ok ? ui.success("Report copied to clipboard — paste in your group") :
             ui.info("Report submitted. Tap the copy button to share.")
         });
+        setPreviewData(null);  // close modal
         l(_refreshed), d(!1)
       } catch (N) {
         ui.error(N.message || "Failed to submit")
@@ -58096,7 +58110,17 @@ function Lz() {
         className: "h-11",
         children: "Cancel"
       })]
-    })]
+    }),
+    // Submission preview modal — shows BEFORE submit, MO must click Confirm to save
+    m.jsx(SubmissionPreviewModal, {
+      open: !!previewData,
+      reportType: "MO",
+      data: previewData,
+      onConfirm: confirmSubmit,
+      onEdit: () => setPreviewData(null),  // close modal, return to form for editing
+      submitting: p  // MO form's submitting state
+    })
+  ]
   })
 }
 
@@ -60130,6 +60154,121 @@ const PO_FORM_FIELDS = [
   { key: "total_faulty", label: "Total Faulty" }
 ];
 
+// ============================================================================
+// Submission Preview Modal — shows after MO/PO submits so they can double-check
+// ============================================================================
+// Props:
+//   open: boolean — whether the modal is visible
+//   reportType: "MO" | "PO" | "MS"
+//   data: the submitted report data object
+//   onConfirm: callback when user clicks "Confirm"
+//   onEdit: callback when user clicks "Edit"
+// ============================================================================
+function SubmissionPreviewModal({ open, reportType, data, onConfirm, onEdit, submitting }) {
+  if (!open || !data) return null;
+
+  // Helper: format a stock section for display
+  const renderStockSection = (label, stockObj, isNumber) => {
+    if (isNumber) {
+      // Plain number (e.g. KA stock for PO)
+      return m.jsxs("div", {
+        style: { display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f3f4f6" },
+        children: [
+          m.jsx("span", { style: { fontSize: "12px", fontWeight: 600, color: "#374151" }, children: label }),
+          m.jsx("span", { style: { fontSize: "14px", fontWeight: 700, color: "#111827" }, children: stockObj })
+        ]
+      });
+    }
+    if (!stockObj || typeof stockObj !== "object") return null;
+    const smart = Number(stockObj.smart) || 0;
+    const tpos = Number(stockObj.tpos) || 0;
+    const mpos = Number(stockObj.mpos) || 0;
+    const total = Number(stockObj.total) || (smart + tpos + mpos);
+    return m.jsxs("div", {
+      style: { padding: "8px 0", borderBottom: "1px solid #f3f4f6" },
+      children: [
+        m.jsxs("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: "4px" }, children: [
+          m.jsx("span", { style: { fontSize: "12px", fontWeight: 600, color: "#374151" }, children: label }),
+          m.jsxs("span", { style: { fontSize: "14px", fontWeight: 800, color: "#111827" }, children: ["Total: ", total] })
+        ]}),
+        m.jsxs("div", { style: { display: "flex", gap: "12px", paddingLeft: "8px" }, children: [
+          m.jsxs("span", { style: { fontSize: "11px", color: "#6b7280" }, children: ["Smart: ", m.jsx("b", { style: { color: "#374151" }, children: smart })] }),
+          m.jsxs("span", { style: { fontSize: "11px", color: "#6b7280" }, children: ["TPOS: ", m.jsx("b", { style: { color: "#374151" }, children: tpos })] }),
+          m.jsxs("span", { style: { fontSize: "11px", color: "#6b7280" }, children: ["MPOS: ", m.jsx("b", { style: { color: "#374151" }, children: mpos })] })
+        ]})
+      ]
+    });
+  };
+
+  // Determine which stock fields to show based on report type
+  const isMO = reportType === "MO";
+  const isPO = reportType === "PO";
+  const KA_UUID = "fb589c57-cd00-4c24-b440-a0dbc94c8fdf";
+
+  return m.jsx("div", {
+    style: { position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999, padding: "16px" },
+    // Do NOT close on overlay click — user must explicitly click Edit or Confirm & Submit
+    onClick: ev => ev.stopPropagation(),
+    children: m.jsxs("div", {
+      style: { backgroundColor: "#ffffff", borderRadius: "16px", maxWidth: "500px", width: "100%", maxHeight: "85vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" },
+      onClick: ev => ev.stopPropagation(),
+      children: [
+        // Header
+        m.jsxs("div", {
+          style: { padding: "16px 20px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", gap: "8px" },
+          children: [
+            m.jsx(ao, { size: 20, style: { color: "#059669" } }),
+            m.jsx("h3", { style: { fontSize: "16px", fontWeight: 700, color: "#111827", margin: 0 }, children: "Please Review Before Submitting" })
+          ]
+        }),
+        // Body — stock sections
+        m.jsxs("div", {
+          style: { padding: "16px 20px" },
+          children: [
+            m.jsx("p", { style: { fontSize: "12px", color: "#6b7280", marginBottom: "12px" }, children: "Check the values below carefully. Click Confirm to submit to the database, or Edit to make changes." }),
+
+            isMO && [
+              renderStockSection("New Stock", data.stock_new),
+              renderStockSection("Repaired Stock", data.stock_rep),
+              renderStockSection("R&R Stock", data.stock_rr),
+              renderStockSection("Faulty", data.faulty),
+              data.custom && data.custom[KA_UUID] != null && renderStockSection("KA Stock in Office", data.custom[KA_UUID], true),
+              data.visitation != null && renderStockSection("Visitation", data.visitation, true)
+            ],
+            isPO && [
+              renderStockSection("Brand New Stock", data.brand_new_stock),
+              renderStockSection("Repaired Stock", data.repaired_stock),
+              renderStockSection("R&R Stock", data.rr_stock),
+              renderStockSection("Total Faulty", data.total_faulty),
+              data.custom && data.custom[KA_UUID] != null && renderStockSection("KA Stock in Office", data.custom[KA_UUID], true),
+              data.tn_stickers != null && renderStockSection("TN Stickers", data.tn_stickers, true),
+              data.three_fold_flyers != null && renderStockSection("3 Fold Flyers", data.three_fold_flyers, true)
+            ]
+          ]
+        }),
+        // Footer — Confirm + Edit buttons
+        m.jsxs("div", {
+          style: { padding: "16px 20px", borderTop: "1px solid #e5e7eb", display: "flex", gap: "8px", justifyContent: "flex-end" },
+          children: [
+            m.jsx("button", {
+              onClick: onEdit,
+              disabled: submitting,
+              style: { padding: "8px 20px", fontSize: "13px", fontWeight: 600, borderRadius: "8px", border: "1px solid #d1d5db", backgroundColor: "#ffffff", color: "#374151", cursor: submitting ? "wait" : "pointer" },
+              children: "Edit"
+            }),
+            m.jsx("button", {
+              onClick: onConfirm,
+              disabled: submitting,
+              style: { padding: "8px 20px", fontSize: "13px", fontWeight: 700, borderRadius: "8px", border: "none", backgroundColor: submitting ? "#9ca3af" : "#059669", color: "#ffffff", cursor: submitting ? "wait" : "pointer" },
+              children: submitting ? "Submitting..." : "Confirm & Submit"
+            })
+          ]
+        })
+      ]
+    })
+  });
+}
+
 function POReportPage() {
   const { user: e } = Qn();
   const [formData, setFormData] = E.useState({});
@@ -60139,6 +60278,7 @@ function POReportPage() {
   const [editMode, setEditMode] = E.useState(!1);
   const [checking, setChecking] = E.useState(!0);
   const [poTasks, setPoTasks] = E.useState([]);
+  const [previewData, setPreviewData] = E.useState(null);  // shows preview modal after submit
   const today = new Date().toISOString().split("T")[0];
   const todayDisplay = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
 
@@ -60202,19 +60342,27 @@ function POReportPage() {
     setError("");
     if (!e) { setError("Not logged in."); return; }
     if (!e.market_id) { setError("No market assigned. Contact admin."); return; }
+    // STEP 1: Show preview modal — do NOT save to database yet.
+    // The PO reviews the preview, then clicks "Confirm" to actually submit.
+    const dataWithMeta = {
+      ...formData,
+      poName: e.name || "",
+      poCode: e.code || "",
+      submittedDate: today
+    };
+    setPreviewData(dataWithMeta);
+  };
+
+  // STEP 2: Actually submit the report to the database (called when PO clicks Confirm)
+  const confirmSubmit = async () => {
+    setError("");
     setSubmitting(!0);
     try {
       const submitTime = new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
-      const dataWithMeta = {
-        ...formData,
-        poName: e.name || "",
-        poCode: e.code || "",
-        submittedDate: today
-      };
 
       if (editMode && existingReport) {
         // Update existing report
-        await updatePOReport(existingReport.id, submitTime, dataWithMeta);
+        await updatePOReport(existingReport.id, submitTime, previewData);
         ui.success("PO report updated successfully");
       } else {
         // Re-check right before submitting to prevent race conditions
@@ -60222,15 +60370,16 @@ function POReportPage() {
         if (existing) {
           setExistingReport(existing);
           ui.info("A report was already submitted for your market today");
+          setPreviewData(null);
           return;
         }
-        await createPOReport(e.id, e.market_id, today, submitTime, dataWithMeta);
+        await createPOReport(e.id, e.market_id, today, submitTime, previewData);
         ui.success("PO report submitted successfully");
         // Auto-copy the report summary to clipboard
         try {
           const _poText = formatPOReportText({
             date: today, submitted_at: submitTime, user: e, market_id: e.market_id,
-            data: dataWithMeta
+            data: previewData
           }, null);
           copyReportToClipboard(_poText).then(_ok => {
             _ok ? ui.success("Report copied to clipboard — paste in your group") :
@@ -60238,6 +60387,7 @@ function POReportPage() {
           });
         } catch(_copyErr) {}
       }
+      setPreviewData(null);  // close modal
       setFormData({});
       setEditMode(!1);
       // Refresh the existing-report check so the "submitted" view appears
@@ -60551,7 +60701,17 @@ function POReportPage() {
           children: submitting ? "Saving..." : (editMode ? "Save Changes" : "Submit Report")
         })
       ]
-    })]
+    }),
+    // Submission preview modal — shows BEFORE submit, PO must click Confirm to save
+    m.jsx(SubmissionPreviewModal, {
+      open: !!previewData,
+      reportType: "PO",
+      data: previewData,
+      onConfirm: confirmSubmit,
+      onEdit: () => setPreviewData(null),  // close modal, return to form for editing
+      submitting: submitting  // PO form's submitting state
+    })
+  ]
   });
 }
 
