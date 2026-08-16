@@ -27330,6 +27330,11 @@ const _j = [
     path: "/mo-supervisor/requests",
     roles: ["mo_supervisor"]
   }, {
+    label: "Router Applications",
+    icon: "FileText",
+    path: "/mo-supervisor/router-applications",
+    roles: ["mo_supervisor"]
+  }, {
     label: "Report Verification",
     icon: "ClipboardCheck",
     path: "/mo-supervisor/verify-reports",
@@ -27400,6 +27405,11 @@ const _j = [
     path: "/mo/change-status",
     roles: ["mo"]
   }, {
+    label: "Router Application",
+    icon: "FileText",
+    path: "/mo/router-application",
+    roles: ["mo"]
+  }, {
     label: "My Report",
     icon: "FileText",
     path: "/ms/report",
@@ -27425,6 +27435,11 @@ const _j = [
     path: "/po/change-status",
     roles: ["po"]
   }, {
+    label: "Router Application",
+    icon: "FileText",
+    path: "/po/router-application",
+    roles: ["po"]
+  }, {
     label: "Dashboard",
     icon: "LayoutDashboard",
     path: "/mo-po-manager",
@@ -27443,6 +27458,11 @@ const _j = [
     label: "Request Table",
     icon: "RefreshCw",
     path: "/mo-po-manager/requests",
+    roles: ["mo_po_manager"]
+  }, {
+    label: "Router Applications",
+    icon: "FileText",
+    path: "/mo-po-manager/router-applications",
     roles: ["mo_po_manager"]
   }, {
     label: "Report Verification",
@@ -37047,6 +37067,61 @@ async function addCOSReason(reason) {
 async function removeCOSReason(reason) {
   const list = getCOSReasons().filter(r => r !== reason);
   return await saveCOSReasons(list);
+}
+
+// ============================================================================
+// Router Applications — MO/PO request routers and data subscriptions
+// ============================================================================
+// Status workflow: Pending → Requested → Subscribed
+// Two request types:
+//   'router':       router_action ('new'|'swap'), reason
+//   'subscription': network_name ('MTN'|'GLO'|'AIRTEL'), router_sn, router_phone
+// ============================================================================
+
+async function createRouterApplication(userId, params) {
+  const { data, error } = await It.rpc("create_router_application", {
+    p_user_id: userId,
+    p_request_type: params.request_type,
+    p_router_action: params.router_action || null,
+    p_reason: params.reason || "",
+    p_network_from: params.network_from || null,
+    p_network_to: params.network_to || null,
+    p_network_name: params.network_name || null,
+    p_router_sn: params.router_sn || "",
+    p_router_phone: params.router_phone || ""
+  });
+  if (error) throw new Error(`Failed to create application: ${error.message}`);
+  return data;
+}
+
+async function fetchMyRouterApplications(userId) {
+  const { data, error } = await It.rpc("get_my_router_applications", { p_user_id: userId });
+  if (error) throw new Error(`Failed to fetch your applications: ${error.message}`);
+  return data || [];
+}
+
+async function fetchAllRouterApplications(userId) {
+  const { data, error } = await It.rpc("get_all_router_applications", { p_user_id: userId });
+  if (error) throw new Error(`Failed to fetch applications: ${error.message}`);
+  return data || [];
+}
+
+async function updateRouterApplicationStatus(id, newStatus) {
+  const { data, error } = await It.rpc("update_router_application_status", {
+    p_application_id: id,
+    p_new_status: newStatus
+  });
+  if (error) throw new Error(`Failed to update status: ${error.message}`);
+  return data;
+}
+
+async function deleteRouterApplication(userId, id) {
+  const { error } = await It.rpc("delete_router_application", {
+    p_user_id: userId,
+    p_application_id: id
+  });
+  if (error) throw new Error(`Failed to delete application: ${error.message}`);
+  return true;
 }
 
 // ============================================================================
@@ -59026,6 +59101,349 @@ function ChangeOfStatusPage() {
 }
 
 // ============================================================================
+// Router Application — MO/PO page (form + read-only "My Applications" table)
+// ============================================================================
+const ROUTER_NETWORKS = ["MTN", "GLO", "AIRTEL"];
+
+function RouterApplicationPage() {
+  const { user: e } = Qn();
+  const [tab, setTab] = E.useState("router");  // "router" | "subscription"
+  // Router request form
+  const [routerAction, setRouterAction] = E.useState("new");
+  const [routerReason, setRouterReason] = E.useState("");
+  const [networkFrom, setNetworkFrom] = E.useState("");  // for swap: network being swapped FROM
+  const [networkTo, setNetworkTo] = E.useState("");      // for new/swap: network being requested
+  // Subscription request form
+  const [networkName, setNetworkName] = E.useState("");
+  const [routerSN, setRouterSN] = E.useState("");
+  const [routerPhone, setRouterPhone] = E.useState("");
+  // State
+  const [applications, setApplications] = E.useState([]);
+  const [loading, setLoading] = E.useState(!0);
+  const [submitting, setSubmitting] = E.useState(!1);
+  const [error, setError] = E.useState("");
+
+  const load = async () => {
+    if (!e) return;
+    setLoading(!0);
+    try {
+      setApplications(await fetchMyRouterApplications(e.id));
+    } catch (err) {
+      console.error("Failed to load applications:", err);
+    } finally {
+      setLoading(!1);
+    }
+  };
+
+  E.useEffect(() => { load() }, [e]);
+
+  const submitRouter = async (ev) => {
+    ev.preventDefault();
+    setError("");
+    if (!routerReason.trim()) {
+      setError("Reason is required.");
+      return;
+    }
+    if (!networkTo) {
+      setError(routerAction === "swap" ? "Please select the 'To Network'." : "Please select a network type.");
+      return;
+    }
+    if (routerAction === "swap" && !networkFrom) {
+      setError("Please select the 'From Network'.");
+      return;
+    }
+    setSubmitting(!0);
+    try {
+      await createRouterApplication(e.id, {
+        request_type: "router",
+        router_action: routerAction,
+        reason: routerReason,
+        network_from: routerAction === "swap" ? networkFrom : null,
+        network_to: networkTo
+      });
+      ui.success("Router application submitted");
+      setRouterReason("");
+      setNetworkFrom("");
+      setNetworkTo("");
+      await load();
+    } catch (err) {
+      setError(err.message || "Failed to submit");
+    } finally {
+      setSubmitting(!1);
+    }
+  };
+
+  const submitSubscription = async (ev) => {
+    ev.preventDefault();
+    setError("");
+    if (!networkName) {
+      setError("Please select a network.");
+      return;
+    }
+    if (!routerSN.trim() || !routerPhone.trim()) {
+      setError("Router SN and Router Phone Number are required.");
+      return;
+    }
+    setSubmitting(!0);
+    try {
+      await createRouterApplication(e.id, {
+        request_type: "subscription",
+        network_name: networkName,
+        router_sn: routerSN,
+        router_phone: routerPhone
+      });
+      ui.success("Subscription application submitted");
+      setNetworkName("");
+      setRouterSN("");
+      setRouterPhone("");
+      await load();
+    } catch (err) {
+      setError(err.message || "Failed to submit");
+    } finally {
+      setSubmitting(!1);
+    }
+  };
+
+  const statusBadge = (s) => {
+    const styles = {
+      Pending: "bg-amber-100 text-amber-700 border-amber-200",
+      Requested: "bg-blue-100 text-blue-700 border-blue-200",
+      Subscribed: "bg-emerald-100 text-emerald-700 border-emerald-200"
+    };
+    return styles[s] || "bg-gray-100 text-gray-600 border-gray-200";
+  };
+
+  const fmtDate = (d) => new Date(d).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
+  return m.jsxs("div", {
+    className: "space-y-5",
+    children: [m.jsxs("div", {
+      children: [m.jsxs("h1", {
+        className: "text-xl font-extrabold text-gray-800 flex items-center gap-2",
+        children: [m.jsx(qi, { className: "text-emerald-600", size: 22 }), "Router Application"]
+      }), m.jsx("p", {
+        className: "text-xs text-gray-400 mt-1",
+        children: "Request a new router, swap an existing one, or apply for data subscription"
+      })]
+    }),
+
+    // Tab switcher: Router Request | Subscription Request
+    m.jsx("div", {
+      className: "flex gap-1 bg-gray-100 p-0.5 rounded-lg w-fit",
+      children: [
+        m.jsx("button", {
+          onClick: () => { setTab("router"); setError(""); },
+          className: `px-4 py-2 text-xs font-bold rounded-md transition-all ${tab === "router" ? "bg-white text-emerald-700 shadow-sm" : "text-gray-400"}`,
+          children: "Router Request"
+        }),
+        m.jsx("button", {
+          onClick: () => { setTab("subscription"); setError(""); },
+          className: `px-4 py-2 text-xs font-bold rounded-md transition-all ${tab === "subscription" ? "bg-white text-emerald-700 shadow-sm" : "text-gray-400"}`,
+          children: "Subscription Request"
+        })
+      ]
+    }),
+
+    // === Router Request Form ===
+    tab === "router" && m.jsxs(Je, {
+      className: "p-5",
+      children: [m.jsxs("h3", {
+        className: "text-sm font-bold text-gray-800 mb-4 flex items-center gap-2",
+        children: [m.jsx(cg, { className: "text-emerald-500", size: 16 }), "New Router Request"]
+      }), m.jsxs("form", {
+        onSubmit: submitRouter,
+        className: "space-y-4",
+        children: [
+          // Request type: New or Swap
+          m.jsxs("div", {
+            children: [m.jsx(Qe, { className: "text-xs font-semibold text-gray-500 uppercase tracking-wider", children: "Request Type" }),
+            m.jsxs("div", {
+              className: "flex gap-2 mt-1",
+              children: [
+                m.jsx("button", {
+                  type: "button",
+                  onClick: () => setRouterAction("new"),
+                  className: `flex-1 px-3 py-2 text-xs font-bold rounded-lg border-2 transition-all ${routerAction === "new" ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-gray-200 text-gray-400 hover:border-gray-300"}`,
+                  children: "New Router"
+                }),
+                m.jsx("button", {
+                  type: "button",
+                  onClick: () => setRouterAction("swap"),
+                  className: `flex-1 px-3 py-2 text-xs font-bold rounded-lg border-2 transition-all ${routerAction === "swap" ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-gray-200 text-gray-400 hover:border-gray-300"}`,
+                  children: "Swap Router"
+                })
+              ]
+            })]
+          }),
+          // Network type dropdown(s)
+          routerAction === "swap"
+            ? m.jsxs("div", {
+                className: "grid grid-cols-2 gap-3",
+                children: [
+                  m.jsxs("div", {
+                    children: [m.jsx(Qe, { className: "text-xs font-semibold text-gray-500 uppercase tracking-wider", children: "From Network" }),
+                    m.jsxs(qn, {
+                      value: networkFrom || "none",
+                      onValueChange: v => setNetworkFrom(v === "none" ? "" : v),
+                      children: [m.jsx(Kn, { className: "mt-1", children: m.jsx(Yn, { placeholder: "Select..." }) }),
+                      m.jsxs(Xn, {
+                        children: [m.jsx(ft, { value: "none", children: "— Select —" }),
+                          ROUTER_NETWORKS.map(n => m.jsx(ft, { value: n, children: n }, n))]
+                      })]
+                    })]
+                  }),
+                  m.jsxs("div", {
+                    children: [m.jsx(Qe, { className: "text-xs font-semibold text-gray-500 uppercase tracking-wider", children: "To Network" }),
+                    m.jsxs(qn, {
+                      value: networkTo || "none",
+                      onValueChange: v => setNetworkTo(v === "none" ? "" : v),
+                      children: [m.jsx(Kn, { className: "mt-1", children: m.jsx(Yn, { placeholder: "Select..." }) }),
+                      m.jsxs(Xn, {
+                        children: [m.jsx(ft, { value: "none", children: "— Select —" }),
+                          ROUTER_NETWORKS.map(n => m.jsx(ft, { value: n, children: n }, n))]
+                      })]
+                    })]
+                  })
+                ]
+              })
+            : m.jsxs("div", {
+                children: [m.jsx(Qe, { className: "text-xs font-semibold text-gray-500 uppercase tracking-wider", children: "Network Type" }),
+                m.jsxs(qn, {
+                  value: networkTo || "none",
+                  onValueChange: v => setNetworkTo(v === "none" ? "" : v),
+                  children: [m.jsx(Kn, { className: "mt-1", children: m.jsx(Yn, { placeholder: "Select network..." }) }),
+                  m.jsxs(Xn, {
+                    children: [m.jsx(ft, { value: "none", children: "— Select Network —" }),
+                      ROUTER_NETWORKS.map(n => m.jsx(ft, { value: n, children: n }, n))]
+                  })]
+                })]
+              }),
+          // Reason box
+          m.jsxs("div", {
+            children: [m.jsx(Qe, { className: "text-xs font-semibold text-gray-500 uppercase tracking-wider", children: "Reason" }),
+            m.jsx("textarea", {
+              value: routerReason,
+              onChange: t => setRouterReason(t.target.value),
+              placeholder: routerAction === "new" ? "e.g. Need a new router for the new office location" : "e.g. Old router is faulty, not connecting to network",
+              className: "w-full min-h-[80px] px-3 py-2 text-sm border border-gray-200 rounded-lg resize-y mt-1",
+              required: true
+            })]
+          }),
+          error && m.jsx("div", { className: "bg-red-50 border border-red-200 rounded-lg p-3", children: m.jsx("p", { className: "text-xs text-red-600 font-medium", children: error }) }),
+          m.jsxs(ht, {
+            type: "submit",
+            disabled: submitting,
+            className: "bg-emerald-600 hover:bg-emerald-700 text-white",
+            children: [m.jsx(ug, { size: 14, className: "mr-1" }), submitting ? "Submitting..." : "Submit Request"]
+          })]
+        })]
+    }),
+
+    // === Subscription Request Form ===
+    tab === "subscription" && m.jsxs(Je, {
+      className: "p-5",
+      children: [m.jsxs("h3", {
+        className: "text-sm font-bold text-gray-800 mb-4 flex items-center gap-2",
+        children: [m.jsx(cg, { className: "text-emerald-500", size: 16 }), "Data Subscription Request"]
+      }), m.jsxs("form", {
+        onSubmit: submitSubscription,
+        className: "space-y-4",
+        children: [
+          // Network name dropdown
+          m.jsxs("div", {
+            children: [m.jsx(Qe, { className: "text-xs font-semibold text-gray-500 uppercase tracking-wider", children: "Network Name" }),
+            m.jsxs(qn, {
+              value: networkName || "none",
+              onValueChange: v => setNetworkName(v === "none" ? "" : v),
+              children: [m.jsx(Kn, { className: "mt-1", children: m.jsx(Yn, { placeholder: "Select network..." }) }),
+              m.jsxs(Xn, {
+                children: [m.jsx(ft, { value: "none", children: "— Select Network —" }),
+                  ROUTER_NETWORKS.map(n => m.jsx(ft, { value: n, children: n }, n))]
+              })]
+            })]
+          }),
+          // Router SN
+          m.jsxs("div", {
+            children: [m.jsx(Qe, { className: "text-xs font-semibold text-gray-500 uppercase tracking-wider", children: "Router SN" }),
+            m.jsx(yt, {
+              value: routerSN,
+              onChange: t => setRouterSN(t.target.value),
+              placeholder: "e.g. RTR-001234",
+              className: "mt-1"
+            })]
+          }),
+          // Router phone number
+          m.jsxs("div", {
+            children: [m.jsx(Qe, { className: "text-xs font-semibold text-gray-500 uppercase tracking-wider", children: "Router Phone Number" }),
+            m.jsx(yt, {
+              value: routerPhone,
+              onChange: t => setRouterPhone(t.target.value),
+              placeholder: "e.g. 08012345678",
+              className: "mt-1"
+            })]
+          }),
+          error && m.jsx("div", { className: "bg-red-50 border border-red-200 rounded-lg p-3", children: m.jsx("p", { className: "text-xs text-red-600 font-medium", children: error }) }),
+          m.jsxs(ht, {
+            type: "submit",
+            disabled: submitting,
+            className: "bg-emerald-600 hover:bg-emerald-700 text-white",
+            children: [m.jsx(ug, { size: 14, className: "mr-1" }), submitting ? "Submitting..." : "Submit Request"]
+          })]
+        })]
+    }),
+
+    // === My Applications table ===
+    m.jsxs(Je, {
+      className: "p-5",
+      children: [m.jsxs("h3", {
+        className: "text-sm font-bold text-gray-800 mb-4 flex items-center gap-2",
+        children: [m.jsx(ao, { className: "text-emerald-500", size: 16 }), "My Applications"]
+      }), loading ? m.jsx("div", {
+        className: "space-y-2",
+        children: Array.from({ length: 3 }).map((_, i) => m.jsx(Zn, { className: "h-12" }, i))
+      }) : applications.length === 0 ? m.jsx("p", {
+        className: "text-sm text-gray-400 text-center py-8",
+        children: "You have not submitted any applications yet"
+      }) : m.jsx("div", {
+        className: "overflow-x-auto",
+        children: m.jsxs("table", {
+          className: "w-full text-sm",
+          children: [m.jsx("thead", {
+            children: m.jsxs("tr", {
+              className: "border-b border-gray-200 text-left",
+              children: [m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Type" }), m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Details" }), m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Status" }), m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Date" })]
+            })
+          }), m.jsx("tbody", {
+            children: applications.map(r => {
+              const isRouter = r.request_type === "router";
+              let details;
+              if (isRouter) {
+                const action = r.router_action === "swap" ? "Swap" : "New";
+                const netInfo = r.router_action === "swap"
+                  ? `${r.network_from || "—"} → ${r.network_to || "—"}`
+                  : `${r.network_to || "—"}`;
+                details = `${action} — ${netInfo} — ${r.reason}`;
+              } else {
+                details = `${r.network_name} — SN: ${r.router_sn} — Phone: ${r.router_phone}`;
+              }
+              return m.jsxs("tr", {
+                className: "border-b border-gray-100 hover:bg-gray-50",
+                children: [
+                  m.jsx("td", { className: "py-2.5 px-3", children: m.jsx("span", { className: `text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full ${isRouter ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"}`, children: isRouter ? "Router" : "Sub" }) }),
+                  m.jsx("td", { className: "py-2.5 px-3 text-gray-700", children: details }),
+                  m.jsx("td", { className: "py-2.5 px-3", children: m.jsx("span", { className: `text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${statusBadge(r.status)}`, children: r.status }) }),
+                  m.jsx("td", { className: "py-2.5 px-3 text-[11px] text-gray-400", children: fmtDate(r.created_at) })
+                ]
+              }, r.id);
+            })
+          })]
+        })
+      })]
+    })]
+  });
+}
+
+// ============================================================================
 // Change of Status — Supervisor Request Table (all MOs, status update)
 // ============================================================================
 function SupervisorRequestTable() {
@@ -60132,6 +60550,281 @@ function ReportVerificationPage() {
         ]})
       )
     ]
+  });
+}
+
+
+// ============================================================================
+// Router Applications — Supervisor/Manager table (status update, date filter, copy, delete)
+// ============================================================================
+function SupervisorRouterApplicationsTable() {
+  const { user: e } = Qn();
+  const isAdmin = e?.role === "admin";
+  const [applications, setApplications] = E.useState([]);
+  const [loading, setLoading] = E.useState(!0);
+  const [updating, setUpdating] = E.useState({});
+  const [filterStatus, setFilterStatus] = E.useState("all");
+  const [filterType, setFilterType] = E.useState("all");
+  const [dateFrom, setDateFrom] = E.useState("");
+  const [dateTo, setDateTo] = E.useState("");
+  const [copying, setCopying] = E.useState(!1);
+
+  const load = async () => {
+    setLoading(!0);
+    try {
+      const all = await fetchAllRouterApplications(e.id);
+      setApplications(all);
+    } catch (err) {
+      console.error("Failed to load applications:", err);
+    } finally {
+      setLoading(!1);
+    }
+  };
+
+  E.useEffect(() => { load() }, []);
+
+  const handleStatusChange = async (id, newStatus) => {
+    setUpdating(prev => ({ ...prev, [id]: !0 }));
+    try {
+      await updateRouterApplicationStatus(id, newStatus);
+      ui.success("Status updated");
+      setApplications(prev => prev.map(r => r.id === id ? { ...r, status: newStatus } : r));
+    } catch (err) {
+      ui.error(err.message || "Failed to update status");
+    } finally {
+      setUpdating(prev => ({ ...prev, [id]: !1 }));
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm("Delete this application? This cannot be undone.")) return;
+    setUpdating(prev => ({ ...prev, [id]: !0 }));
+    try {
+      await deleteRouterApplication(e.id, id);
+      ui.success("Application deleted");
+      setApplications(prev => prev.filter(r => r.id !== id));
+    } catch (err) {
+      ui.error(err.message || "Failed to delete");
+    } finally {
+      setUpdating(prev => ({ ...prev, [id]: !1 }));
+    }
+  };
+
+  const handleCopy = async () => {
+    if (!filtered.length) { ui.error("No applications to copy"); return; }
+    setCopying(!0);
+    try {
+      const lines = ["Router Applications — " + (dateFrom || "all") + " to " + (dateTo || "now"), ""];
+      filtered.forEach((r, i) => {
+        const isRouter = r.request_type === "router";
+        const typeLabel = isRouter ? `Router (${r.router_action === "swap" ? "Swap" : "New"})` : "Subscription";
+        const details = isRouter
+          ? r.router_action === "swap"
+            ? `From: ${r.network_from || "—"} | To: ${r.network_to || "—"} | Reason: ${r.reason || "—"}`
+            : `Network: ${r.network_to || "—"} | Reason: ${r.reason || "—"}`
+          : `Network: ${r.network_name || "—"} | SN: ${r.router_sn || "—"} | Phone: ${r.router_phone || "—"}`;
+        lines.push(`${i + 1}. [${r.status}] ${r.submitter_name || "Unknown"} — ${r.market_name || "—"}`);
+        lines.push(`   Type: ${typeLabel}`);
+        lines.push(`   ${details}`);
+        lines.push(`   Date: ${fmtDate(r.created_at)}`);
+        lines.push("");
+      });
+      const ok = await copyReportToClipboard(lines.join("\n"));
+      ok ? ui.success(`Copied ${filtered.length} application(s) to clipboard`) : ui.info("Copy failed");
+    } catch (err) {
+      ui.error("Failed to copy");
+    } finally {
+      setCopying(!1);
+    }
+  };
+
+  const statusBadge = (s) => {
+    const styles = {
+      Pending: "bg-amber-100 text-amber-700 border-amber-200",
+      Requested: "bg-blue-100 text-blue-700 border-blue-200",
+      Subscribed: "bg-emerald-100 text-emerald-700 border-emerald-200"
+    };
+    return styles[s] || "bg-gray-100 text-gray-600 border-gray-200";
+  };
+
+  const fmtDate = (d) => new Date(d).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
+  // Apply all filters: type + status + date range
+  const filtered = applications.filter(r => {
+    if (filterStatus !== "all" && r.status !== filterStatus) return false;
+    if (filterType !== "all" && r.request_type !== filterType) return false;
+    if (dateFrom || dateTo) {
+      const d = new Date(r.created_at);
+      if (dateFrom) { const from = new Date(dateFrom + "T00:00:00"); if (d < from) return false; }
+      if (dateTo) { const to = new Date(dateTo + "T23:59:59"); if (d > to) return false; }
+    }
+    return true;
+  });
+
+  const hasActiveFilters = filterStatus !== "all" || filterType !== "all" || dateFrom || dateTo;
+  const clearFilters = () => { setFilterStatus("all"); setFilterType("all"); setDateFrom(""); setDateTo(""); };
+
+  const summary = {
+    total: applications.length,
+    pending: applications.filter(r => r.status === "Pending").length,
+    requested: applications.filter(r => r.status === "Requested").length,
+    subscribed: applications.filter(r => r.status === "Subscribed").length
+  };
+
+  return m.jsxs("div", {
+    className: "space-y-5",
+    children: [m.jsxs("div", {
+      children: [m.jsxs("h1", {
+        className: "text-xl font-extrabold text-gray-800 flex items-center gap-2",
+        children: [m.jsx(ao, { className: "text-emerald-600", size: 22 }), "Router Applications"]
+      }), m.jsx("p", {
+        className: "text-xs text-gray-400 mt-1",
+        children: "All router and subscription applications submitted by MOs and POs"
+      })]
+    }),
+
+    // Summary cards
+    m.jsxs("div", {
+      className: "grid grid-cols-3 gap-3",
+      children: [m.jsxs(Je, {
+        className: "p-3 text-center border-l-4 border-amber-400",
+        children: [m.jsx("div", { className: "text-lg font-extrabold text-amber-600", children: summary.pending }), m.jsx("div", { className: "text-[10px] font-semibold text-gray-400 uppercase", children: "Pending" })]
+      }), m.jsxs(Je, {
+        className: "p-3 text-center border-l-4 border-blue-400",
+        children: [m.jsx("div", { className: "text-lg font-extrabold text-blue-600", children: summary.requested }), m.jsx("div", { className: "text-[10px] font-semibold text-gray-400 uppercase", children: "Requested" })]
+      }), m.jsxs(Je, {
+        className: "p-3 text-center border-l-4 border-emerald-400",
+        children: [m.jsx("div", { className: "text-lg font-extrabold text-emerald-600", children: summary.subscribed }), m.jsx("div", { className: "text-[10px] font-semibold text-gray-400 uppercase", children: "Subscribed" })]
+      })]
+    }),
+
+    // Filters bar — type + status + date range + copy
+    m.jsxs(Je, {
+      className: "p-4",
+      children: [m.jsxs("div", {
+        className: "flex flex-col gap-3",
+        children: [
+          // Row 1: type + status filters
+          m.jsxs("div", {
+            className: "flex flex-wrap items-end gap-3",
+            children: [m.jsxs("div", {
+              className: "flex flex-col gap-1",
+              children: [m.jsx(Qe, { className: "text-[10px] font-bold text-gray-400 uppercase", children: "Filter by Type" }), m.jsxs(qn, {
+                value: filterType,
+                onValueChange: v => setFilterType(v),
+                children: [m.jsx(Kn, { children: m.jsx(Yn, { placeholder: "All Types" }) }), m.jsxs(Xn, {
+                  children: [m.jsx(ft, { value: "all", children: "All Types" }), m.jsx(ft, { value: "router", children: "Router Requests" }), m.jsx(ft, { value: "subscription", children: "Subscription Requests" })]
+                })]
+              })]
+            }), m.jsxs("div", {
+              className: "flex flex-col gap-1",
+              children: [m.jsx(Qe, { className: "text-[10px] font-bold text-gray-400 uppercase", children: "Filter by Status" }), m.jsxs(qn, {
+                value: filterStatus,
+                onValueChange: v => setFilterStatus(v),
+                children: [m.jsx(Kn, { children: m.jsx(Yn, { placeholder: "All Statuses" }) }), m.jsxs(Xn, {
+                  children: [m.jsx(ft, { value: "all", children: "All Statuses" }), m.jsx(ft, { value: "Pending", children: "Pending" }), m.jsx(ft, { value: "Requested", children: "Requested" }), m.jsx(ft, { value: "Subscribed", children: "Subscribed" })]
+                })]
+              })]
+            })]
+          }),
+          // Row 2: date range + clear + copy
+          m.jsxs("div", {
+            className: "flex flex-wrap items-end gap-3 justify-between",
+            children: [m.jsxs("div", {
+              className: "flex flex-wrap items-end gap-3",
+              children: [m.jsxs("div", {
+                className: "flex flex-col gap-1",
+                children: [m.jsx(Qe, { className: "text-[10px] font-bold text-gray-400 uppercase", children: "From Date" }), m.jsx(yt, { type: "date", value: dateFrom, onChange: t => setDateFrom(t.target.value), className: "h-9 w-40 text-xs" })]
+              }), m.jsxs("div", {
+                className: "flex flex-col gap-1",
+                children: [m.jsx(Qe, { className: "text-[10px] font-bold text-gray-400 uppercase", children: "To Date" }), m.jsx(yt, { type: "date", value: dateTo, onChange: t => setDateTo(t.target.value), className: "h-9 w-40 text-xs" })]
+              }), hasActiveFilters && m.jsx(ht, { size: "sm", variant: "outline", onClick: clearFilters, className: "text-xs border-gray-200 text-gray-500 hover:bg-gray-50 h-9", children: "Clear Filters" })]
+            }), m.jsxs("div", {
+              className: "flex items-center gap-2",
+              children: [m.jsxs("span", { className: "text-[10px] text-gray-400 font-bold uppercase", children: [filtered.length, " of ", applications.length, " applications"] }), filtered.length > 0 && m.jsxs(ht, { size: "sm", variant: "outline", onClick: handleCopy, disabled: copying, className: "text-xs border-blue-200 text-blue-600 hover:bg-blue-50", children: [m.jsx(cp2, { size: 12, className: "mr-1" }), copying ? "Copying..." : "Copy"] })]
+            })]
+          })
+        ]
+      })]
+    }),
+
+    // Applications table — separated columns: Network, SN, Phone
+    m.jsxs(Je, {
+      className: "p-5",
+      children: [m.jsxs("h3", {
+        className: "text-sm font-bold text-gray-800 mb-4 flex items-center gap-2",
+        children: [m.jsx(ao, { className: "text-emerald-500", size: 16 }), "All Applications"]
+      }), loading ? m.jsx("div", {
+        className: "space-y-2",
+        children: Array.from({ length: 5 }).map((_, i) => m.jsx(Zn, { className: "h-12" }, i))
+      }) : filtered.length === 0 ? m.jsx("p", {
+        className: "text-sm text-gray-400 text-center py-8",
+        children: applications.length === 0 ? "No applications submitted yet" : "No applications match the selected filters"
+      }) : m.jsx("div", {
+        className: "overflow-x-auto",
+        children: m.jsxs("table", {
+          className: "w-full text-sm",
+          children: [m.jsx("thead", {
+            children: m.jsxs("tr", {
+              className: "border-b border-gray-200 text-left",
+              children: [
+                m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Type" }),
+                m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Officer" }),
+                m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Market" }),
+                m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Network" }),
+                m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Router SN" }),
+                m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Phone Number" }),
+                m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Reason" }),
+                m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Status" }),
+                m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Date" }),
+                m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Update Status" }),
+                m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "" })
+              ]
+            })
+          }), m.jsx("tbody", {
+            children: filtered.map(r => {
+              const isRouter = r.request_type === "router";
+              return m.jsxs("tr", {
+                className: "border-b border-gray-100 hover:bg-gray-50",
+                children: [
+                  m.jsx("td", { className: "py-2.5 px-3", children: m.jsx("span", { className: `text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full ${isRouter ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"}`, children: isRouter ? "Router" : "Sub" }) }),
+                  m.jsx("td", { className: "py-2.5 px-3 text-gray-700", children: r.submitter_name || "Unknown" }),
+                  m.jsx("td", { className: "py-2.5 px-3 text-[11px] text-gray-500", children: r.market_name || "—" }),
+                  // Network column: shows network_from → network_to for router requests, network_name for subscriptions
+                  m.jsx("td", { className: "py-2.5 px-3 text-[11px] text-gray-600", children: isRouter
+                    ? (r.router_action === "swap"
+                        ? `${r.network_from || "—"} → ${r.network_to || "—"}`
+                        : (r.network_to || "—"))
+                    : (r.network_name || "—") }),
+                  m.jsx("td", { className: "py-2.5 px-3 font-mono text-xs text-gray-700", children: isRouter ? "—" : (r.router_sn || "—") }),
+                  m.jsx("td", { className: "py-2.5 px-3 font-mono text-xs text-gray-700", children: isRouter ? "—" : (r.router_phone || "—") }),
+                  // Reason column (for router requests)
+                  m.jsx("td", { className: "py-2.5 px-3 text-[11px] text-gray-600 max-w-xs truncate", children: isRouter ? (r.reason || "—") : "—" }),
+                  m.jsx("td", { className: "py-2.5 px-3", children: m.jsx("span", { className: `text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${statusBadge(r.status)}`, children: r.status }) }),
+                  m.jsx("td", { className: "py-2.5 px-3 text-[11px] text-gray-400", children: fmtDate(r.created_at) }),
+                  m.jsx("td", { className: "py-2.5 px-3", children: m.jsxs("div", { className: "flex items-center gap-1", children: [
+                    ["Pending", "Requested", "Subscribed"].map(s => m.jsx("button", {
+                      onClick: () => r.status !== s && handleStatusChange(r.id, s),
+                      disabled: r.status === s || updating[r.id],
+                      className: `text-[10px] font-bold uppercase px-2 py-1 rounded border transition-colors ${r.status === s ? (s === "Pending" ? "bg-amber-100 text-amber-700 border-amber-300" : s === "Requested" ? "bg-blue-100 text-blue-700 border-blue-300" : "bg-emerald-100 text-emerald-700 border-emerald-300") : "bg-white text-gray-400 border-gray-200 hover:bg-gray-50"} ${updating[r.id] ? "opacity-50 cursor-wait" : ""}`,
+                      children: s
+                    }, s))
+                  ] }) }),
+                  // Delete button (supervisors, managers, and admins)
+                  m.jsx("td", { className: "py-2.5 px-3", children: m.jsx("button", {
+                    onClick: () => handleDelete(r.id),
+                    disabled: updating[r.id],
+                    className: "text-gray-400 hover:text-red-500 transition-colors p-1",
+                    title: "Delete application",
+                    children: m.jsx(dg, { size: 14 })
+                  }) })
+                ]
+              }, r.id);
+            })
+          })]
+        })
+      })]
+    })]
   });
 }
 
@@ -62490,6 +63183,9 @@ function Vz() {
                 path: "requests",
                 element: m.jsx(SupervisorRequestTable, {})
               }), m.jsx(Lt, {
+                path: "router-applications",
+                element: m.jsx(SupervisorRouterApplicationsTable, {})
+              }), m.jsx(Lt, {
                 path: "verify-reports",
                 element: m.jsx(ReportVerificationPage, {})
               }), m.jsx(Lt, {
@@ -62559,6 +63255,9 @@ function Vz() {
                 path: "requests",
                 element: m.jsx(SupervisorRequestTable, {})
               }), m.jsx(Lt, {
+                path: "router-applications",
+                element: m.jsx(SupervisorRouterApplicationsTable, {})
+              }), m.jsx(Lt, {
                 path: "verify-reports",
                 element: m.jsx(ReportVerificationPage, {})
               })]
@@ -62581,6 +63280,12 @@ function Vz() {
           element: m.jsx(il, {
             role: "mo",
             children: m.jsx(ChangeOfStatusPage, {})
+          })
+        }), m.jsx(Lt, {
+          path: "/mo/router-application",
+          element: m.jsx(il, {
+            role: "mo",
+            children: m.jsx(RouterApplicationPage, {})
           })
         }), m.jsx(Lt, {
           path: "/ms/report",
@@ -62611,6 +63316,12 @@ function Vz() {
           element: m.jsx(il, {
             role: "po",
             children: m.jsx(ChangeOfStatusPage, {})
+          })
+        }), m.jsx(Lt, {
+          path: "/po/router-application",
+          element: m.jsx(il, {
+            role: "po",
+            children: m.jsx(RouterApplicationPage, {})
           })
         }), m.jsx(Lt, {
           path: "*",
