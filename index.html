@@ -38,6 +38,17 @@
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='12' fill='%23064e3b'/%3E%3Ctext x='50' y='50' font-family='Arial,sans-serif' font-size='68' font-weight='bold' fill='white' text-anchor='middle' dominant-baseline='central'%3ER%3C/text%3E%3C/svg%3E" />
     <title>Report Tracking System</title>
 
+    <!-- Fixed sidebar (desktop: fixed + margin on content; mobile: overlay) -->
+    <style>
+      .app-sidebar { position: fixed !important; height: 100vh !important; top: 0 !important; left: 0 !important; }
+      .app-content { margin-left: 256px; }   /* w-64 = 16rem = 256px */
+      .app-content-collapsed { margin-left: 64px; }  /* w-16 = 4rem = 64px */
+      @media (max-width: 1023px) {
+        .app-content { margin-left: 0 !important; }
+        .app-content-collapsed { margin-left: 0 !important; }
+      }
+    </style>
+
     <!-- Tailwind CSS output (beautified) -->
     <style rel="stylesheet" crossorigin>
 *,
@@ -27471,13 +27482,70 @@ const _j = [
     roles: ["mo_po_manager"]
   }];
 
+// ============================================================================
+// Reusable Pagination Component — use on any table with >50 items
+// ============================================================================
+function Pagination({ total, page, pageSize, onPageChange, onPageSizeChange }) {
+  if (total <= pageSize) return null;  // only show when there are more items than one page
+  const totalPages = Math.ceil(total / pageSize) || 1;
+  const safePage = Math.min(page, totalPages);
+  const startIdx = (safePage - 1) * pageSize;
+  return m.jsx("div", {
+    className: "mt-4",
+    children: m.jsxs("div", {
+      className: "flex flex-wrap items-center justify-between gap-3",
+      children: [
+        m.jsxs("span", {
+          className: "text-[10px] text-gray-400 font-bold uppercase",
+          children: ["Showing ", total === 0 ? 0 : startIdx + 1, "–", Math.min(startIdx + pageSize, total), " of ", total, " (Page ", safePage, " of ", totalPages, ")"]
+        }),
+        m.jsxs("div", {
+          className: "flex items-center gap-2",
+          children: [
+            m.jsxs("select", {
+              value: pageSize,
+              onChange: t => onPageSizeChange(Number(t.target.value)),
+              className: "h-8 text-xs border border-gray-200 rounded-md px-2",
+              children: [
+                m.jsx("option", { value: 10, children: "10 / page" }),
+                m.jsx("option", { value: 25, children: "25 / page" }),
+                m.jsx("option", { value: 50, children: "50 / page" }),
+                m.jsx("option", { value: 100, children: "100 / page" })
+              ]
+            }),
+            m.jsx("button", {
+              onClick: () => onPageChange(safePage - 1),
+              disabled: safePage <= 1,
+              className: "px-3 py-1 text-xs font-bold rounded-md border border-gray-200 text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50",
+              children: "‹ Prev"
+            }),
+            Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter(p => p >= safePage - 2 && p <= safePage + 2)
+              .map(p => m.jsx("button", {
+                onClick: () => onPageChange(p),
+                className: `px-3 py-1 text-xs font-bold rounded-md border ${p === safePage ? "bg-emerald-600 text-white border-emerald-600" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`,
+                children: p
+              }, p)),
+            m.jsx("button", {
+              onClick: () => onPageChange(safePage + 1),
+              disabled: safePage >= totalPages,
+              className: "px-3 py-1 text-xs font-bold rounded-md border border-gray-200 text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50",
+              children: "Next ›"
+            })
+          ]
+        })
+      ]
+    })
+  });
+}
+
 function Tj({
   children: e
 }) {
   const {
     user: t,
     logout: r
-  } = Qn(), n = va(), s = no(), [o, l] = E.useState(!1), [u, d] = E.useState(!1);
+  } = Qn(), n = va(), s = no(), [o, l] = E.useState(!1), [u, d] = E.useState(!1), [zoom, setZoom] = E.useState(100);
   if (!t) return m.jsx(m.Fragment, {
     children: e
   });
@@ -27526,13 +27594,13 @@ function Tj({
       s(w), d(!1)
     };
   return m.jsxs("div", {
-    className: "min-h-screen bg-emerald-50/50 flex",
+    className: "h-screen bg-emerald-50/50 flex overflow-hidden",
     children: [u && m.jsx("div", {
       className: "fixed inset-0 bg-black/40 z-40 lg:hidden",
       onClick: () => d(!1)
     }), m.jsxs("aside", {
       className: `
-          fixed lg:static inset-y-0 left-0 z-50
+          app-sidebar top-0 left-0 z-50
           bg-white border-r border-gray-200
           flex flex-col transition-all duration-300
           ${o?"w-16":"w-64"}
@@ -27627,10 +27695,10 @@ function Tj({
         })
       })]
     }), m.jsxs("div", {
-      className: "flex-1 flex flex-col min-w-0",
+      className: `flex-1 flex flex-col min-w-0 h-full overflow-hidden app-content ${o ? "app-content-collapsed" : ""}`,
       children: [m.jsxs("header", {
         className: `lg:hidden h-14 bg-white border-b border-gray-200 
-                         flex items-center px-4 justify-between`,
+                         flex items-center px-4 justify-between shrink-0`,
         children: [m.jsx("button", {
           onClick: () => d(!0),
           className: "text-gray-500",
@@ -27652,10 +27720,30 @@ function Tj({
         }), m.jsx("div", {
           className: "w-8"
         })]
+      }), m.jsx("div", {
+        className: "hidden lg:flex items-center justify-end gap-2 px-6 py-2 bg-white border-b border-gray-100 shrink-0",
+        children: [m.jsx("button", {
+          onClick: () => { const z = Math.max(50, zoom - 10); setZoom(z); },
+          className: "w-7 h-7 flex items-center justify-center rounded-md border border-gray-200 text-gray-500 hover:bg-gray-50 text-sm font-bold",
+          title: "Zoom out",
+          children: "−"
+        }), m.jsxs("select", {
+          value: zoom,
+          onChange: t => setZoom(Number(t.target.value)),
+          className: "h-7 text-xs border border-gray-200 rounded-md px-1 bg-white text-gray-600 font-semibold",
+          title: "Zoom level",
+          children: [50, 60, 70, 75, 80, 90, 100, 110, 125, 150].map(z => m.jsx("option", { value: z, children: z + "%" }, z))
+        }), m.jsx("button", {
+          onClick: () => { const z = Math.min(150, zoom + 10); setZoom(z); },
+          className: "w-7 h-7 flex items-center justify-center rounded-md border border-gray-200 text-gray-500 hover:bg-gray-50 text-sm font-bold",
+          title: "Zoom in",
+          children: "+"
+        })]
       }), m.jsx("main", {
-        className: "flex-1 p-4 lg:p-6 overflow-auto",
+        className: "flex-1 p-3 sm:p-4 lg:p-6 overflow-y-auto overflow-x-hidden",
         children: m.jsx("div", {
-          className: "max-w-7xl mx-auto",
+          className: "w-full max-w-6xl mx-auto",
+          style: { zoom: zoom + "%" },
           children: e
         })
       })]
@@ -37106,8 +37194,9 @@ async function fetchAllRouterApplications(userId) {
   return data || [];
 }
 
-async function updateRouterApplicationStatus(id, newStatus) {
+async function updateRouterApplicationStatus(userId, id, newStatus) {
   const { data, error } = await It.rpc("update_router_application_status", {
+    p_user_id: userId,
     p_application_id: id,
     p_new_status: newStatus
   });
@@ -55565,7 +55654,9 @@ function MyReportHistory({ teamType }) {
     [reports, setReports] = E.useState([]),
     [tasks, setTasks] = E.useState([]),
     [selectedReport, setSelectedReport] = E.useState(null),
-    [loading, setLoading] = E.useState(!0);
+    [loading, setLoading] = E.useState(!0),
+    [histPage, setHistPage] = E.useState(1),
+    [histPageSize, setHistPageSize] = E.useState(50);
 
   E.useEffect(() => {
     ph().then(setTasks).catch(() => {});
@@ -58828,6 +58919,8 @@ function ChangeOfStatusPage() {
   const [bulkMode, setBulkMode] = E.useState(!1);
   const [bulkText, setBulkText] = E.useState("");
   const [bulkRows, setBulkRows] = E.useState([]);
+  const [cosPage, setCosPage] = E.useState(1);
+  const [cosPageSize, setCosPageSize] = E.useState(50);
 
   const load = async () => {
     if (!e) return;
@@ -59089,12 +59182,18 @@ function ChangeOfStatusPage() {
               children: [m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "SN" }), m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Reason" }), m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Status" }), m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Date Submitted" })]
             })
           }), m.jsx("tbody", {
-            children: requests.map(r => m.jsxs("tr", {
+            children: requests.slice((cosPage - 1) * cosPageSize, cosPage * cosPageSize).map(r => m.jsxs("tr", {
               className: "border-b border-gray-100 hover:bg-gray-50",
               children: [m.jsx("td", { className: "py-2.5 px-3 font-mono text-xs text-gray-700", children: r.sn }), m.jsx("td", { className: "py-2.5 px-3 text-gray-700", children: r.reason }), m.jsx("td", { className: "py-2.5 px-3", children: m.jsx("span", { className: `text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${statusBadge(r.status)}`, children: r.status }) }), m.jsx("td", { className: "py-2.5 px-3 text-[11px] text-gray-400", children: new Date(r.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) })]
             }, r.id))
           })]
         })
+      }), m.jsx(Pagination, {
+        total: requests.length,
+        page: cosPage,
+        pageSize: cosPageSize,
+        onPageChange: setCosPage,
+        onPageSizeChange: v => { setCosPageSize(v); setCosPage(1); }
       })]
     })]
   });
@@ -59122,7 +59221,8 @@ function RouterApplicationPage() {
   const [loading, setLoading] = E.useState(!0);
   const [submitting, setSubmitting] = E.useState(!1);
   const [error, setError] = E.useState("");
-
+  const [currentPage, setCurrentPage] = E.useState(1);
+  const [pageSize, setPageSize] = E.useState(10);
   const load = async () => {
     if (!e) return;
     setLoading(!0);
@@ -59414,7 +59514,7 @@ function RouterApplicationPage() {
               children: [m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Type" }), m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Details" }), m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Status" }), m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Date" })]
             })
           }), m.jsx("tbody", {
-            children: applications.map(r => {
+            children: applications.slice((currentPage - 1) * pageSize, currentPage * pageSize).map(r => {
               const isRouter = r.request_type === "router";
               let details;
               if (isRouter) {
@@ -59438,6 +59538,51 @@ function RouterApplicationPage() {
             })
           })]
         })
+      }), applications.length > pageSize && m.jsx("div", {
+        className: "mt-4",
+        children: m.jsxs("div", {
+          className: "flex flex-wrap items-center justify-between gap-3",
+          children: [
+            m.jsxs("span", {
+              className: "text-[10px] text-gray-400 font-bold uppercase",
+              children: ["Showing ", (currentPage - 1) * pageSize + 1, "–", Math.min(currentPage * pageSize, applications.length), " of ", applications.length, " (Page ", currentPage, " of ", Math.ceil(applications.length / pageSize), ")"]
+            }),
+            m.jsxs("div", {
+              className: "flex items-center gap-2",
+              children: [
+                m.jsxs("select", {
+                  value: pageSize,
+                  onChange: t => { setPageSize(Number(t.target.value)); setCurrentPage(1); },
+                  className: "h-8 text-xs border border-gray-200 rounded-md px-2",
+                  children: [
+                    m.jsx("option", { value: 10, children: "10 / page" }),
+                    m.jsx("option", { value: 25, children: "25 / page" }),
+                    m.jsx("option", { value: 50, children: "50 / page" })
+                  ]
+                }),
+                m.jsx("button", {
+                  onClick: () => setCurrentPage(p => Math.max(1, p - 1)),
+                  disabled: currentPage <= 1,
+                  className: "px-3 py-1 text-xs font-bold rounded-md border border-gray-200 text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50",
+                  children: "‹ Prev"
+                }),
+                Array.from({ length: Math.ceil(applications.length / pageSize) }, (_, i) => i + 1)
+                  .filter(p => p >= currentPage - 2 && p <= currentPage + 2)
+                  .map(p => m.jsx("button", {
+                    onClick: () => setCurrentPage(p),
+                    className: `px-3 py-1 text-xs font-bold rounded-md border ${p === currentPage ? "bg-emerald-600 text-white border-emerald-600" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`,
+                    children: p
+                  }, p)),
+                m.jsx("button", {
+                  onClick: () => setCurrentPage(p => Math.min(Math.ceil(applications.length / pageSize), p + 1)),
+                  disabled: currentPage >= Math.ceil(applications.length / pageSize),
+                  className: "px-3 py-1 text-xs font-bold rounded-md border border-gray-200 text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50",
+                  children: "Next ›"
+                })
+              ]
+            })
+          ]
+        })
       })]
     })]
   });
@@ -59458,6 +59603,8 @@ function SupervisorRequestTable() {
   const [searchSn, setSearchSn] = E.useState("");
   const [dateFrom, setDateFrom] = E.useState("");
   const [dateTo, setDateTo] = E.useState("");
+  const [currentPage, setCurrentPage] = E.useState(1);
+  const [pageSize, setPageSize] = E.useState(10);
 
   // ==========================================================================
   // STRICT REGION-BASED ACCESS CONTROL
@@ -59596,7 +59743,15 @@ function SupervisorRequestTable() {
     setSearchSn("");
     setDateFrom("");
     setDateTo("");
+    setCurrentPage(1);
   };
+
+  // Pagination
+  const totalPages = Math.ceil(filtered.length / pageSize) || 1;
+  const safePage = Math.min(currentPage, totalPages);
+  const startIdx = (safePage - 1) * pageSize;
+  const paginated = filtered.slice(startIdx, startIdx + pageSize);
+  const goToPage = (p) => setCurrentPage(Math.max(1, Math.min(p, totalPages)));
 
   // Copy all filtered SN + Reason to clipboard
   const copyFiltered = async () => {
@@ -59774,7 +59929,7 @@ function SupervisorRequestTable() {
               children: [m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "SN" }), m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Reason" }), m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "MO Name" }), m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Region" }), m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Status" }), m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Date Submitted" }), m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Update Status" })]
             })
           }), m.jsx("tbody", {
-            children: filtered.map(r => m.jsxs("tr", {
+            children: paginated.map(r => m.jsxs("tr", {
               className: "border-b border-gray-100 hover:bg-gray-50",
               children: [m.jsx("td", { className: "py-2.5 px-3 font-mono text-xs text-gray-700", children: r.sn }), m.jsx("td", { className: "py-2.5 px-3 text-gray-700", children: r.reason }), m.jsx("td", { className: "py-2.5 px-3 text-gray-700", children: r.user?.name || "Unknown" }), m.jsx("td", { className: "py-2.5 px-3 text-[11px] text-gray-500", children: regionOf(r) || "—" }), m.jsx("td", { className: "py-2.5 px-3", children: m.jsx("span", { className: `text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${statusBadge(r.status)}`, children: r.status }) }), m.jsx("td", { className: "py-2.5 px-3 text-[11px] text-gray-400", children: new Date(r.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) }), m.jsx("td", { className: "py-2.5 px-3", children: m.jsxs("div", { className: "flex items-center gap-1", children: [
                   ["Pending", "Applied", "Done"].map(s => m.jsx("button", {
@@ -59799,6 +59954,52 @@ function SupervisorRequestTable() {
                 ] })
               })] }, r.id))
           })]
+        })
+      }), m.jsx("div", {
+        className: "mt-4",
+        children: m.jsxs("div", {
+          className: "flex flex-wrap items-center justify-between gap-3",
+          children: [
+            m.jsxs("span", {
+              className: "text-[10px] text-gray-400 font-bold uppercase",
+              children: ["Showing ", filtered.length === 0 ? 0 : startIdx + 1, "–", Math.min(startIdx + pageSize, filtered.length), " of ", filtered.length, " (Page ", safePage, " of ", totalPages, ")"]
+            }),
+            m.jsxs("div", {
+              className: "flex items-center gap-2",
+              children: [
+                m.jsxs("select", {
+                  value: pageSize,
+                  onChange: t => { setPageSize(Number(t.target.value)); setCurrentPage(1); },
+                  className: "h-8 text-xs border border-gray-200 rounded-md px-2",
+                  children: [
+                    m.jsx("option", { value: 10, children: "10 / page" }),
+                    m.jsx("option", { value: 25, children: "25 / page" }),
+                    m.jsx("option", { value: 50, children: "50 / page" }),
+                    m.jsx("option", { value: 100, children: "100 / page" })
+                  ]
+                }),
+                m.jsx("button", {
+                  onClick: () => goToPage(safePage - 1),
+                  disabled: safePage <= 1,
+                  className: "px-3 py-1 text-xs font-bold rounded-md border border-gray-200 text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50",
+                  children: "‹ Prev"
+                }),
+                Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter(p => p >= safePage - 2 && p <= safePage + 2)
+                  .map(p => m.jsx("button", {
+                    onClick: () => goToPage(p),
+                    className: `px-3 py-1 text-xs font-bold rounded-md border ${p === safePage ? "bg-emerald-600 text-white border-emerald-600" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`,
+                    children: p
+                  }, p)),
+                m.jsx("button", {
+                  onClick: () => goToPage(safePage + 1),
+                  disabled: safePage >= totalPages,
+                  className: "px-3 py-1 text-xs font-bold rounded-md border border-gray-200 text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50",
+                  children: "Next ›"
+                })
+              ]
+            })
+          ]
         })
       })]
     })]
@@ -60568,6 +60769,8 @@ function SupervisorRouterApplicationsTable() {
   const [dateFrom, setDateFrom] = E.useState("");
   const [dateTo, setDateTo] = E.useState("");
   const [copying, setCopying] = E.useState(!1);
+  const [currentPage, setCurrentPage] = E.useState(1);
+  const [pageSize, setPageSize] = E.useState(10);
 
   const load = async () => {
     setLoading(!0);
@@ -60586,7 +60789,7 @@ function SupervisorRouterApplicationsTable() {
   const handleStatusChange = async (id, newStatus) => {
     setUpdating(prev => ({ ...prev, [id]: !0 }));
     try {
-      await updateRouterApplicationStatus(id, newStatus);
+      await updateRouterApplicationStatus(e.id, id, newStatus);
       ui.success("Status updated");
       setApplications(prev => prev.map(r => r.id === id ? { ...r, status: newStatus } : r));
     } catch (err) {
@@ -60662,7 +60865,7 @@ function SupervisorRouterApplicationsTable() {
   });
 
   const hasActiveFilters = filterStatus !== "all" || filterType !== "all" || dateFrom || dateTo;
-  const clearFilters = () => { setFilterStatus("all"); setFilterType("all"); setDateFrom(""); setDateTo(""); };
+  const clearFilters = () => { setFilterStatus("all"); setFilterType("all"); setDateFrom(""); setDateTo(""); setCurrentPage(1); };
 
   const summary = {
     total: applications.length,
@@ -60670,6 +60873,13 @@ function SupervisorRouterApplicationsTable() {
     requested: applications.filter(r => r.status === "Requested").length,
     subscribed: applications.filter(r => r.status === "Subscribed").length
   };
+
+  // Pagination
+  const totalPages = Math.ceil(filtered.length / pageSize) || 1;
+  const safePage = Math.min(currentPage, totalPages);
+  const startIdx = (safePage - 1) * pageSize;
+  const paginated = filtered.slice(startIdx, startIdx + pageSize);
+  const goToPage = (p) => setCurrentPage(Math.max(1, Math.min(p, totalPages)));
 
   return m.jsxs("div", {
     className: "space-y-5",
@@ -60782,7 +60992,7 @@ function SupervisorRouterApplicationsTable() {
               ]
             })
           }), m.jsx("tbody", {
-            children: filtered.map(r => {
+            children: paginated.map(r => {
               const isRouter = r.request_type === "router";
               return m.jsxs("tr", {
                 className: "border-b border-gray-100 hover:bg-gray-50",
@@ -60798,8 +61008,11 @@ function SupervisorRouterApplicationsTable() {
                     : (r.network_name || "—") }),
                   m.jsx("td", { className: "py-2.5 px-3 font-mono text-xs text-gray-700", children: isRouter ? "—" : (r.router_sn || "—") }),
                   m.jsx("td", { className: "py-2.5 px-3 font-mono text-xs text-gray-700", children: isRouter ? "—" : (r.router_phone || "—") }),
-                  // Reason column (for router requests)
-                  m.jsx("td", { className: "py-2.5 px-3 text-[11px] text-gray-600 max-w-xs truncate", children: isRouter ? (r.reason || "—") : "—" }),
+                  // Reason column — collapsed with click-to-expand (for router requests)
+                  m.jsx("td", { className: "py-2.5 px-3 text-[11px] text-gray-600 max-w-[120px]", children: isRouter && r.reason
+                    ? m.jsx("details", { children: [m.jsx("summary", { className: "cursor-pointer text-emerald-600 hover:text-emerald-700 font-semibold truncate", children: "View" }), m.jsx("p", { className: "mt-1 p-2 bg-gray-50 rounded text-gray-700 whitespace-pre-wrap", children: r.reason })] })
+                    : "—"
+                  }),
                   m.jsx("td", { className: "py-2.5 px-3", children: m.jsx("span", { className: `text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${statusBadge(r.status)}`, children: r.status }) }),
                   m.jsx("td", { className: "py-2.5 px-3 text-[11px] text-gray-400", children: fmtDate(r.created_at) }),
                   m.jsx("td", { className: "py-2.5 px-3", children: m.jsxs("div", { className: "flex items-center gap-1", children: [
@@ -60822,6 +61035,52 @@ function SupervisorRouterApplicationsTable() {
               }, r.id);
             })
           })]
+        })
+      }), m.jsx("div", {
+        className: "mt-4",
+        children: m.jsxs("div", {
+          className: "flex flex-wrap items-center justify-between gap-3",
+          children: [
+            m.jsxs("span", {
+              className: "text-[10px] text-gray-400 font-bold uppercase",
+              children: ["Showing ", filtered.length === 0 ? 0 : startIdx + 1, "–", Math.min(startIdx + pageSize, filtered.length), " of ", filtered.length, " (Page ", safePage, " of ", totalPages, ")"]
+            }),
+            m.jsxs("div", {
+              className: "flex items-center gap-2",
+              children: [
+                m.jsxs("select", {
+                  value: pageSize,
+                  onChange: t => { setPageSize(Number(t.target.value)); setCurrentPage(1); },
+                  className: "h-8 text-xs border border-gray-200 rounded-md px-2",
+                  children: [
+                    m.jsx("option", { value: 10, children: "10 / page" }),
+                    m.jsx("option", { value: 25, children: "25 / page" }),
+                    m.jsx("option", { value: 50, children: "50 / page" }),
+                    m.jsx("option", { value: 100, children: "100 / page" })
+                  ]
+                }),
+                m.jsx("button", {
+                  onClick: () => goToPage(safePage - 1),
+                  disabled: safePage <= 1,
+                  className: "px-3 py-1 text-xs font-bold rounded-md border border-gray-200 text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50",
+                  children: "‹ Prev"
+                }),
+                Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter(p => p >= safePage - 2 && p <= safePage + 2)
+                  .map(p => m.jsx("button", {
+                    onClick: () => goToPage(p),
+                    className: `px-3 py-1 text-xs font-bold rounded-md border ${p === safePage ? "bg-emerald-600 text-white border-emerald-600" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`,
+                    children: p
+                  }, p)),
+                m.jsx("button", {
+                  onClick: () => goToPage(safePage + 1),
+                  disabled: safePage >= totalPages,
+                  className: "px-3 py-1 text-xs font-bold rounded-md border border-gray-200 text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50",
+                  children: "Next ›"
+                })
+              ]
+            })
+          ]
         })
       })]
     })]
@@ -61417,6 +61676,8 @@ function POMyReports() {
   const [loading, setLoading] = E.useState(!0);
   const [expanded, setExpanded] = E.useState(null);
   const [poTasks, setPoTasks] = E.useState([]);
+  const [poPage, setPoPage] = E.useState(1);
+  const [poPageSize, setPoPageSize] = E.useState(50);
 
   const load = async () => {
     if (!e) return;
@@ -61459,7 +61720,7 @@ function POMyReports() {
         children: "You have not submitted any reports yet"
       }) : m.jsx("div", {
         className: "space-y-2",
-        children: reports.map(r => {
+        children: reports.slice((poPage - 1) * poPageSize, poPage * poPageSize).map(r => {
           const isExpanded = expanded === r.id;
           const d = r.data || {};
           return m.jsxs("div", {
@@ -62090,7 +62351,7 @@ function POPreviewModal({ reports, markets, tasks, onClose, onExcel }) {
               }),
               // Body rows — alternating white / light gray
               m.jsx("tbody", {
-                children: reports.map((r, idx) => {
+                children: reports.slice((histPage - 1) * histPageSize, histPage * histPageSize).map((r, idx) => {
                   const d = r.data || {};
                   const mk = r.market || markets.find(mk => mk.id === r.market_id) || {};
                   const getPos = (key) => d[key] || { smart: 0, tpos: 0, mpos: 0, total: 0 };
