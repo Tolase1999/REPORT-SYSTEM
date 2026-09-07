@@ -53692,8 +53692,19 @@ function YU(e, t, r, a) {
     y.rows.forEach((w, S) => {
       const C = w.data || {},
         k = r.find(L => L.id === w.user_id) || w.user || {},
-        // Total = sum of 4 system metrics (always, regardless of column visibility)
-        R = n(C.swapCount) + readMSBinding(C, a) + n(C.enrolled) + n(C.profileCount);
+        // Total = sum of 4 system metrics + custom numeric tasks
+        R = n(C.swapCount) + readMSBinding(C, a) + n(C.enrolled) + n(C.profileCount)
+          + msCols.filter(c => c.isCustom && (c.taskType === "number" || !c.taskType)).reduce((sum, c) => {
+              const v = getMSCellValue(C, c, a);
+              return sum + (typeof v === "number" ? v : (parseInt(v) || 0));
+            }, 0)
+          + msCols.filter(c => c.isCustom && c.taskType === "yesno").reduce((sum, c) => {
+              return sum + (getMSCellValue(C, c, a) === "Y" ? 1 : 0);
+            }, 0)
+          + msCols.filter(c => c.isCustom && (c.taskType === "stock_pair" || c.taskType === "faulty_triple")).reduce((sum, c) => {
+              const v = getMSCellValue(C, c, a);
+              return sum + (typeof v === "number" ? v : (parseInt(v) || 0));
+            }, 0);
       _ += R;
       // Fixed cells
       d(u, 0, S === 0 ? y.name : "", mktStyle);
@@ -54242,7 +54253,18 @@ function KU({
     o = e.user,
     l = e.data || {},
     _bindingVal = n ? parseInt(String(l.binding || 0)) : readMSBinding(l, Q),
-    u = parseInt(String(l.swapCount || 0)) + _bindingVal + parseInt(String(l.enrolled || 0)) + parseInt(String(l.profileCount || 0)),
+    // For MS reports: also add custom numeric task values to the total
+    _customTotal = n ? 0 : (Q || []).filter(t => !t.system && (t.type === "number")).reduce((sum, t) => {
+      const v = l.custom?.[t.id];
+      return sum + (parseInt(v) || 0);
+    }, 0) + (Q || []).filter(t => !t.system && (t.type === "stock_pair" || t.type === "faulty_triple")).reduce((sum, t) => {
+      const v = l.custom?.[t.id];
+      if (v && typeof v === "object") return sum + (v.total || (v.smart || 0) + (v.tpos || 0) + (v.mpos || 0));
+      return sum;
+    }, 0) + (Q || []).filter(t => !t.system && t.type === "yesno").reduce((sum, t) => {
+      return sum + (l.custom?.[t.id] === "Yes" ? 1 : 0);
+    }, 0),
+    u = parseInt(String(l.swapCount || 0)) + _bindingVal + parseInt(String(l.enrolled || 0)) + parseInt(String(l.profileCount || 0)) + _customTotal,
     h = n ? ["stock_new", "stock_rep", "stock_rr", "faulty"].reduce((p, k) => p + (readMOPOSField(l, Q, k)?.total || 0), 0) : 0;
   return m.jsxs(Je, {
     className: `overflow-hidden transition-all ${n?"border-l-4 border-l-emerald-400 border border-emerald-100":"border-l-4 border-l-emerald-400 border border-emerald-100"}`,
@@ -54990,8 +55012,19 @@ function XU({
                       const U = L => parseInt(L) || 0,
                         R = N.rows.map(L => {
                           const P = L.data || {},
-                            // Total = sum of the 4 system metrics (always, regardless of column visibility)
-                            J = U(P.swapCount) + readMSBinding(P, n) + U(P.enrolled) + U(P.profileCount);
+                            // Total = sum of 4 system metrics + custom numeric tasks
+                            J = U(P.swapCount) + readMSBinding(P, n) + U(P.enrolled) + U(P.profileCount)
+                              + msCols.filter(c => c.isCustom && (c.taskType === "number" || !c.taskType)).reduce((sum, c) => {
+                                  const v = getMSCellValue(P, c, n);
+                                  return sum + (typeof v === "number" ? v : (parseInt(v) || 0));
+                                }, 0)
+                              + msCols.filter(c => c.isCustom && c.taskType === "yesno").reduce((sum, c) => {
+                                  return sum + (getMSCellValue(P, c, n) === "Y" ? 1 : 0);
+                                }, 0)
+                              + msCols.filter(c => c.isCustom && (c.taskType === "stock_pair" || c.taskType === "faulty_triple")).reduce((sum, c) => {
+                                  const v = getMSCellValue(P, c, n);
+                                  return sum + (typeof v === "number" ? v : (parseInt(v) || 0));
+                                }, 0);
                           return F += J, J
                         });
                       return N.rows.map((L, P) => {
@@ -58663,7 +58696,8 @@ function Pz({
             value: l.smart || "",
             onChange: u => n({
               ...l,
-              smart: parseInt(u.target.value) || 0
+              smart: parseInt(u.target.value) || 0,
+              total: (parseInt(u.target.value) || 0) + (l.tpos || 0)
             })
           })]
         }), m.jsxs("div", {
@@ -58676,9 +58710,19 @@ function Pz({
             value: l.tpos || "",
             onChange: u => n({
               ...l,
-              tpos: parseInt(u.target.value) || 0
+              tpos: parseInt(u.target.value) || 0,
+              total: (l.smart || 0) + (parseInt(u.target.value) || 0)
             })
           })]
+        })]
+      }), m.jsxs("div", {
+        className: "mt-3 p-3 bg-gradient-to-r from-pink-50 to-rose-50 rounded-lg text-center",
+        children: [m.jsx("p", {
+          className: "text-[10px] font-bold uppercase opacity-80 text-pink-600",
+          children: "Total"
+        }), m.jsx("p", {
+          className: "text-2xl font-extrabold text-pink-700",
+          children: (l.smart || 0) + (l.tpos || 0)
         })]
       })]
     })
@@ -58704,12 +58748,23 @@ function Pz({
             type: "number",
             min: 0,
             value: l[u] || "",
-            onChange: d => n({
-              ...l,
-              [u]: parseInt(d.target.value) || 0
-            })
+            onChange: d => {
+              const newVal = parseInt(d.target.value) || 0;
+              const updated = { ...l, [u]: newVal };
+              updated.total = (updated.smart || 0) + (updated.tpos || 0) + (updated.mpos || 0);
+              n(updated);
+            }
           })]
         }, u))
+      }), m.jsxs("div", {
+        className: "mt-3 p-3 bg-gradient-to-r from-pink-50 to-rose-50 rounded-lg text-center",
+        children: [m.jsx("p", {
+          className: "text-[10px] font-bold uppercase opacity-80 text-pink-600",
+          children: "Total"
+        }), m.jsx("p", {
+          className: "text-2xl font-extrabold text-pink-700",
+          children: (l.smart || 0) + (l.tpos || 0) + (l.mpos || 0)
+        })]
       })]
     })
   }
