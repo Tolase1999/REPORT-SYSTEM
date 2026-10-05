@@ -27316,6 +27316,11 @@ const _j = [
     path: "/admin/cos-reasons",
     roles: ["admin"]
   }, {
+    label: "Materials",
+    icon: "ClipboardList",
+    path: "/admin/materials",
+    roles: ["admin"]
+  }, {
     label: "Dashboard",
     icon: "LayoutDashboard",
     path: "/mo-supervisor",
@@ -27344,6 +27349,11 @@ const _j = [
     label: "Router Applications",
     icon: "FileText",
     path: "/mo-supervisor/router-applications",
+    roles: ["mo_supervisor"]
+  }, {
+    label: "Material Reports",
+    icon: "FileText",
+    path: "/mo-supervisor/material-reports",
     roles: ["mo_supervisor"]
   }, {
     label: "Report Verification",
@@ -27421,6 +27431,11 @@ const _j = [
     path: "/mo/router-application",
     roles: ["mo"]
   }, {
+    label: "Material Report",
+    icon: "FileText",
+    path: "/mo/material-report",
+    roles: ["mo"]
+  }, {
     label: "My Report",
     icon: "FileText",
     path: "/ms/report",
@@ -27451,6 +27466,11 @@ const _j = [
     path: "/po/router-application",
     roles: ["po"]
   }, {
+    label: "Material Report",
+    icon: "FileText",
+    path: "/po/material-report",
+    roles: ["po"]
+  }, {
     label: "Dashboard",
     icon: "LayoutDashboard",
     path: "/mo-po-manager",
@@ -27474,6 +27494,11 @@ const _j = [
     label: "Router Applications",
     icon: "FileText",
     path: "/mo-po-manager/router-applications",
+    roles: ["mo_po_manager"]
+  }, {
+    label: "Material Reports",
+    icon: "FileText",
+    path: "/mo-po-manager/material-reports",
     roles: ["mo_po_manager"]
   }, {
     label: "Report Verification",
@@ -34461,6 +34486,13 @@ const xD = [{
   path: "/admin/cos-reasons",
   iconBg: "bg-emerald-100",
   iconText: "text-emerald-600"
+}, {
+  label: "Materials",
+  desc: "Manage material list for daily reports",
+  icon: ao,
+  path: "/admin/materials",
+  iconBg: "bg-amber-100",
+  iconText: "text-amber-600"
 }];
 
 function vD() {
@@ -37155,6 +37187,58 @@ async function addCOSReason(reason) {
 async function removeCOSReason(reason) {
   const list = getCOSReasons().filter(r => r !== reason);
   return await saveCOSReasons(list);
+}
+
+// ============================================================================
+// Material Reports — admin manages materials, MO/PO fill daily quantities
+// ============================================================================
+
+async function fetchMaterials() {
+  const { data, error } = await It.rpc("get_materials");
+  if (error) throw new Error(`Failed to fetch materials: ${error.message}`);
+  return data || [];
+}
+
+async function addMaterialItem(userId, name) {
+  const { data, error } = await It.rpc("add_material_item", { p_user_id: userId, p_name: name });
+  if (error) throw new Error(`Failed to add material: ${error.message}`);
+  return data;
+}
+
+async function deleteMaterialItem(materialId) {
+  const { error } = await It.rpc("delete_material_item", { p_material_id: materialId });
+  if (error) throw new Error(`Failed to delete material: ${error.message}`);
+  return true;
+}
+
+async function saveMaterialReport(userId, dateStr, entries) {
+  const { data, error } = await It.rpc("save_material_report", {
+    p_user_id: userId, p_report_date: dateStr, p_entries: entries
+  });
+  if (error) throw new Error(`Failed to save material report: ${error.message}`);
+  return data;
+}
+
+async function getMyMaterialReport(userId, dateStr) {
+  const { data, error } = await It.rpc("get_my_material_report", {
+    p_user_id: userId, p_report_date: dateStr
+  });
+  if (error) throw new Error(`Failed to fetch your report: ${error.message}`);
+  return data || [];
+}
+
+async function fetchAllMaterialReports(userId, dateStr) {
+  const { data, error } = await It.rpc("get_all_material_reports", {
+    p_user_id: userId, p_report_date: dateStr
+  });
+  if (error) throw new Error(`Failed to fetch material reports: ${error.message}`);
+  return data || [];
+}
+
+async function deleteMaterialReport(userId, reportId) {
+  const { error } = await It.rpc("delete_material", { p_user_id: userId, p_report_id: reportId });
+  if (error) throw new Error(`Failed to delete: ${error.message}`);
+  return true;
 }
 
 // ============================================================================
@@ -60445,8 +60529,22 @@ function ReportVerificationPage() {
   };
 
   // === Helper: generate all discrepancy lines for a row (for summary) ===
+  // Helper: recompute whether a row is a mismatch (based on breakdown, not RPC totals)
+  const isRowMismatch = (row) => {
+    if (!row.baseline_exists) return false;
+    const { submitted, baseline } = extractMatchBreakdown(row);
+    const stockKeys = ["new_stock", "normal_stock", "faulty"];
+    const fieldKeys = ["smart", "tpos", "mpos"];
+    for (const st of stockKeys) {
+      for (const f of fieldKeys) {
+        if ((submitted[st]?.[f] || 0) !== (baseline[st]?.[f] || 0)) return true;
+      }
+    }
+    return false;
+  };
+
   const getAllDiscrepancies = (row) => {
-    if (row.overall_status !== "mismatch" || !row.baseline_exists) return [];
+    if (!isRowMismatch(row) || !row.baseline_exists) return [];
     const { submitted, baseline } = extractMatchBreakdown(row);
     const stockTypes = [
       { key: "new_stock", label: "New" },
@@ -60479,9 +60577,9 @@ function ReportVerificationPage() {
   const summary = E.useMemo(() => {
     const moRows = enrichedMatches.filter(r => r.report_type === "MO");
     const poRows = enrichedMatches.filter(r => r.report_type === "PO");
-    const matched = enrichedMatches.filter(r => r.overall_status === "matched").length;
-    const mismatch = enrichedMatches.filter(r => r.overall_status === "mismatch").length;
-    const noBaseline = enrichedMatches.filter(r => r.overall_status === "no_baseline").length;
+    const matched = enrichedMatches.filter(r => r.baseline_exists && !isRowMismatch(r)).length;
+    const mismatch = enrichedMatches.filter(r => isRowMismatch(r)).length;
+    const noBaseline = enrichedMatches.filter(r => !r.baseline_exists).length;
     return { total: enrichedMatches.length, mo: moRows.length, po: poRows.length, matched, mismatch, noBaseline, baselines: baselines.length };
   }, [enrichedMatches, baselines]);
 
@@ -60574,7 +60672,7 @@ function ReportVerificationPage() {
 
   // === Helper: generate the plain-text summary for copying ===
   const mismatchSummaryText = E.useMemo(() => {
-    const mismatches = enrichedMatches.filter(r => r.overall_status === "mismatch" && r.baseline_exists);
+    const mismatches = enrichedMatches.filter(r => isRowMismatch(r) && r.baseline_exists);
     if (mismatches.length === 0) return "POSP Stock Verification — " + dateStr + "\n\nAll reports fully matched. No discrepancies.";
     const lines = ["POSP Stock Verification — " + dateStr, "", "Mismatches (" + mismatches.length + "):", ""];
     mismatches.forEach((row, i) => {
@@ -60590,11 +60688,28 @@ function ReportVerificationPage() {
   const renderMatchCard = (row) => {
     const reportType = row.report_type || "MO";
     const key = `${reportType}:${row.report_id}`;
-    const isMatched = row.overall_status === "matched";
-    const isMismatch = row.overall_status === "mismatch";
-    const noBaseline = row.overall_status === "no_baseline";
     const isMO = reportType === "MO";
     const { submitted, baseline } = extractMatchBreakdown(row);
+    const noBaseline = !row.baseline_exists;
+
+    // Compute match status from the breakdown (Smart/TPOS/MPOS per stock type)
+    // This ensures the badge matches what the table shows
+    const stockKeys = ["new_stock", "normal_stock", "faulty"];
+    const fieldKeys = ["smart", "tpos", "mpos"];
+    let allMatch = !noBaseline;
+    if (!noBaseline) {
+      for (const st of stockKeys) {
+        for (const f of fieldKeys) {
+          if ((submitted[st]?.[f] || 0) !== (baseline[st]?.[f] || 0)) {
+            allMatch = false;
+            break;
+          }
+        }
+        if (!allMatch) break;
+      }
+    }
+    const isMatched = !noBaseline && allMatch;
+    const isMismatch = !noBaseline && !allMatch;
 
     const badgeBg = isMatched ? "#dcfce7" : isMismatch ? "#fee2e2" : "#fef3c7";
     const badgeFg = isMatched ? "#15803d" : isMismatch ? "#b91c1c" : "#b45309";
@@ -61154,6 +61269,520 @@ function SupervisorRouterApplicationsTable() {
 //   TN stickers           (number)
 //   3 fold flyers         (number)
 // ============================================================================
+
+// ============================================================================
+// Material Manager — admin component (CRUD for materials)
+// ============================================================================
+function MaterialManager() {
+  const { user: e } = Qn();
+  const [materials, setMaterials] = E.useState([]);
+  const [newName, setNewName] = E.useState("");
+  const [loading, setLoading] = E.useState(!0);
+  const [saving, setSaving] = E.useState(!1);
+  const [error, setError] = E.useState("");
+
+  const load = async () => {
+    setLoading(!0);
+    try {
+      setMaterials(await fetchMaterials());
+    } catch (err) {
+      console.error("Failed to load materials:", err);
+    } finally {
+      setLoading(!1);
+    }
+  };
+
+  E.useEffect(() => { load() }, []);
+
+  const handleAdd = async (ev) => {
+    ev.preventDefault();
+    setError("");
+    const trimmed = newName.trim();
+    if (!trimmed) { setError("Material name is required."); return; }
+    const exists = materials.some(m => m.name.toLowerCase() === trimmed.toLowerCase());
+    if (exists) { setError("This material already exists."); return; }
+    setSaving(!0);
+    try {
+      await addMaterialItem(e.id, trimmed);
+      ui.success("Material added");
+      setNewName("");
+      await load();
+    } catch (err) {
+      setError(err.message || "Failed to add");
+    } finally {
+      setSaving(!1);
+    }
+  };
+
+  const handleDelete = async (id, name) => {
+    if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
+    try {
+      await deleteMaterialItem(id);
+      ui.success("Material deleted");
+      setMaterials(prev => prev.filter(m => m.id !== id));
+    } catch (err) {
+      ui.error(err.message || "Failed to delete");
+    }
+  };
+
+  return m.jsxs("div", {
+    className: "space-y-5",
+    children: [m.jsxs("div", {
+      children: [m.jsxs("h1", {
+        className: "text-xl font-extrabold text-gray-800 flex items-center gap-2",
+        children: [m.jsx(qi, { className: "text-emerald-600", size: 22 }), "Material Manager"]
+      }), m.jsx("p", {
+        className: "text-xs text-gray-400 mt-1",
+        children: "Create and manage the list of materials that MOs and POs fill daily"
+      })]
+    }),
+    m.jsxs(Je, {
+      className: "p-5",
+      children: [m.jsxs("h3", {
+        className: "text-sm font-bold text-gray-800 mb-3 flex items-center gap-2",
+        children: [m.jsx(cg, { className: "text-emerald-500", size: 16 }), "Add New Material"]
+      }), m.jsxs("form", {
+        onSubmit: handleAdd,
+        className: "flex gap-2",
+        children: [m.jsx(yt, {
+          value: newName, onChange: t => setNewName(t.target.value),
+          placeholder: "e.g. Router SIM Card",
+          className: "flex-1"
+        }), m.jsxs(ht, {
+          type: "submit", disabled: saving,
+          className: "bg-emerald-600 hover:bg-emerald-700 text-white",
+          children: [m.jsx(ug, { size: 14, className: "mr-1" }), saving ? "Adding..." : "Add"]
+        })]
+      }), error && m.jsx("p", { className: "text-xs text-red-600 mt-2", children: error })]
+    }),
+    m.jsxs(Je, {
+      className: "p-5",
+      children: [m.jsxs("div", {
+        className: "flex items-center justify-between mb-3",
+        children: [m.jsxs("h3", {
+          className: "text-sm font-bold text-gray-800 flex items-center gap-2",
+          children: [m.jsx(ao, { className: "text-emerald-500", size: 16 }), "Current Materials"]
+        }), m.jsxs("span", { className: "text-[10px] font-bold text-gray-400 uppercase", children: [materials.length, " items"] })]
+      }), loading ? m.jsx("div", {
+        className: "space-y-2",
+        children: Array.from({ length: 4 }).map((_, i) => m.jsx(Zn, { className: "h-10" }, i))
+      }) : materials.length === 0 ? m.jsx("p", {
+        className: "text-sm text-gray-400 text-center py-6",
+        children: "No materials yet. Add one above."
+      }) : m.jsx("div", {
+        className: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2",
+        children: materials.map((mat, i) => m.jsxs("div", {
+          className: "flex items-center justify-between gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200",
+          children: [m.jsxs("div", {
+            className: "flex items-center gap-2 min-w-0 flex-1",
+            children: [m.jsx("span", { className: "text-[10px] font-bold text-gray-400 shrink-0", children: (i + 1) + "." }),
+            m.jsx("span", { className: "text-sm text-gray-700 truncate", children: mat.name })]
+          }), m.jsx("button", {
+            onClick: () => handleDelete(mat.id, mat.name),
+            className: "text-gray-400 hover:text-red-500 transition-colors p-1",
+            title: "Delete",
+            children: m.jsx(dg, { size: 14 })
+          })]
+        }, mat.id))
+      })]
+    })]
+  });
+}
+
+
+// ============================================================================
+// Material Report — MO/PO page (pick materials, fill quantities, submit)
+// ============================================================================
+function MaterialReportPage() {
+  const { user: e } = Qn();
+  const [materials, setMaterials] = E.useState([]);
+  const [entries, setEntries] = E.useState([]);
+  const [existing, setExisting] = E.useState(null);
+  const [loading, setLoading] = E.useState(!0);
+  const [submitting, setSubmitting] = E.useState(!1);
+  const [error, setError] = E.useState("");
+  const [previewData, setPreviewData] = E.useState(null);  // preview modal state
+  const today = new Date().toISOString().split("T")[0];
+
+  const load = async () => {
+    if (!e) return;
+    setLoading(!0);
+    try {
+      const [mats, myReport] = await Promise.all([fetchMaterials(), getMyMaterialReport(e.id, today)]);
+      setMaterials(mats || []);
+      if (myReport && myReport.length > 0) {
+        setExisting(myReport[0]);
+        // Ensure entries have all required fields
+        setEntries((myReport[0].entries || []).map(en => ({
+          material_id: en.material_id || "",
+          material_name: en.material_name || "",
+          quantity: String(en.quantity || "")
+        })));
+      }
+    } catch (err) {
+      console.error("Failed to load:", err);
+      ui.error(err.message || "Failed to load materials");
+    } finally {
+      setLoading(!1);
+    }
+  };
+
+  E.useEffect(() => { load() }, [e]);
+
+  const addEntry = () => {
+    setEntries(prev => [...prev, { material_id: "", material_name: "", quantity: "" }]);
+  };
+
+  const updateEntry = (idx, field, value) => {
+    setEntries(prev => prev.map((en, i) => {
+      if (i !== idx) return en;
+      if (field === "material_id") {
+        const mat = materials.find(mk => mk.id === value);
+        return { ...en, material_id: value, material_name: mat ? mat.name : "" };
+      }
+      return { ...en, [field]: value };
+    }));
+  };
+
+  const removeEntry = (idx) => {
+    setEntries(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  // STEP 1: Show preview modal — do NOT save to database yet.
+  const submit = () => {
+    setError("");
+    if (!e) { setError("Not logged in."); return; }
+    const valid = entries.filter(en => en.material_id && en.quantity);
+    if (valid.length === 0) { setError("Add at least one material with a quantity."); return; }
+    const cleanEntries = valid.map(en => ({
+      material_id: en.material_id,
+      material_name: en.material_name,
+      quantity: parseInt(en.quantity) || 0
+    }));
+    // Show preview modal — user must click "Confirm & Submit" to save
+    setPreviewData(cleanEntries);
+  };
+
+  // STEP 2: Actually save to the database (called when user clicks Confirm & Submit)
+  const confirmSubmit = async () => {
+    setSubmitting(!0);
+    try {
+      await saveMaterialReport(e.id, today, previewData);
+      ui.success(existing ? "Material report updated" : "Material report submitted");
+      setPreviewData(null);  // close modal
+      await load();
+    } catch (err) {
+      setError(err.message || "Failed to submit");
+    } finally {
+      setSubmitting(!1);
+    }
+  };
+
+  const fmtDate = (d) => new Date(d).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
+  // Loading guard — don't render the form until user and materials are loaded
+  if (!e) return m.jsx("div", { className: "flex items-center justify-center py-20", children: m.jsx("p", { className: "text-sm text-gray-400", children: "Loading..." }) });
+
+  return m.jsxs("div", {
+    className: "space-y-5",
+    children: [m.jsxs("div", {
+      children: [m.jsxs("h1", {
+        className: "text-xl font-extrabold text-gray-800 flex items-center gap-2",
+        children: [m.jsx(qi, { className: "text-emerald-600", size: 22 }), "Material Report"]
+      }), m.jsx("p", {
+        className: "text-xs text-gray-400 mt-1",
+        children: new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
+      })]
+    }),
+    // Already submitted banner
+    existing && m.jsxs(Je, {
+      className: "p-4 bg-gradient-to-r from-emerald-50 to-green-50 border-emerald-200",
+      children: [m.jsxs("div", {
+        className: "flex items-center gap-3",
+        children: [m.jsx(ys, { className: "text-emerald-600", size: 20 }), m.jsxs("div", {
+          children: [m.jsx("p", { className: "text-sm font-bold text-emerald-800", children: "Report Submitted" }),
+          m.jsxs("p", { className: "text-xs text-emerald-600", children: ["Submitted at ", fmtDate(existing.submitted_at), " · ", entries.length, " items"] })]
+        })]
+      })]
+    }),
+
+    // Form — pick materials one by one
+    m.jsxs(Je, {
+      className: "p-5",
+      children: [m.jsxs("div", {
+        className: "flex items-center justify-between mb-4",
+        children: [m.jsxs("h3", {
+          className: "text-sm font-bold text-gray-800 flex items-center gap-2",
+          children: [m.jsx(cg, { className: "text-emerald-500", size: 16 }), existing ? "Edit Material Entries" : "Add Material Entries"]
+        }), m.jsxs(ht, {
+          size: "sm", variant: "outline", onClick: addEntry, disabled: loading || materials.length === 0,
+          className: "border-emerald-200 text-emerald-600 hover:bg-emerald-50",
+          children: [m.jsx(ug, { size: 14, className: "mr-1" }), "Add Material"]
+        })]
+      }),
+      loading ? m.jsx("p", { className: "text-sm text-gray-400 text-center py-6", children: "Loading materials..." })
+      : materials.length === 0 ? m.jsx("p", { className: "text-sm text-gray-400 text-center py-6", children: "No materials available. Ask admin to add materials first." })
+      : entries.length === 0 ? m.jsx("p", { className: "text-sm text-gray-400 text-center py-6", children: "Click \"Add Material\" to pick a material and enter quantity." })
+      : m.jsx("div", {
+        className: "space-y-2",
+        children: entries.map((en, idx) => m.jsxs("div", {
+          className: "flex items-center gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200",
+          children: [
+            m.jsx("span", { className: "text-[10px] font-bold text-gray-400 w-6 shrink-0", children: (idx + 1) + "." }),
+            // Material dropdown
+            m.jsx(qn, {
+              value: en.material_id || "none",
+              onValueChange: v => updateEntry(idx, "material_id", v === "none" ? "" : v),
+              children: [
+                m.jsx(Kn, { className: "h-9 flex-1 text-xs", children: m.jsx(Yn, { placeholder: "Select material..." }) }),
+                m.jsx(Xn, {
+                  children: [
+                    m.jsx(ft, { value: "none", children: "— Select —" }),
+                    materials.filter(mk => !entries.some((e2, i2) => i2 !== idx && e2.material_id === mk.id)).map(mk => m.jsx(ft, { value: mk.id, children: mk.name }, mk.id))
+                  ]
+                })
+              ]
+            }),
+            // Quantity input
+            m.jsx(yt, {
+              type: "number", min: "0",
+              value: en.quantity,
+              onChange: t => updateEntry(idx, "quantity", t.target.value),
+              placeholder: "Qty",
+              className: "w-20 h-9 text-xs text-center"
+            }),
+            // Remove button
+            m.jsx("button", {
+              onClick: () => removeEntry(idx),
+              className: "text-gray-400 hover:text-red-500 transition-colors p-1",
+              title: "Remove",
+              children: m.jsx(dg, { size: 14 })
+            })
+          ]
+        }, idx))
+      }),
+      error && m.jsx("p", { className: "text-xs text-red-600 mt-2", children: error }),
+      entries.length > 0 && m.jsxs("div", {
+        className: "flex items-center gap-3 mt-4 pt-3 border-t border-gray-100",
+        children: [m.jsxs("span", { className: "text-[10px] text-gray-400 font-bold uppercase", children: [entries.filter(en => en.material_id && en.quantity).length, " valid entries"] }),
+        m.jsxs(ht, {
+          onClick: submit, disabled: submitting,
+          className: "ml-auto bg-emerald-600 hover:bg-emerald-700 text-white font-bold",
+          children: [m.jsx(ug, { size: 14, className: "mr-1" }), existing ? "Preview & Update" : "Preview & Submit"]
+        })]
+      })]
+    }),
+
+    // === Preview Modal — show before saving to database ===
+    previewData && m.jsx("div", {
+      style: { position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999, padding: "16px" },
+      onClick: () => !submitting && setPreviewData(null),
+      children: m.jsxs("div", {
+        style: { backgroundColor: "#ffffff", borderRadius: "16px", maxWidth: "450px", width: "100%", maxHeight: "85vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" },
+        onClick: ev => ev.stopPropagation(),
+        children: [
+          // Header
+          m.jsxs("div", {
+            style: { padding: "16px 20px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", gap: "8px" },
+            children: [m.jsx(ao, { size: 20, style: { color: "#059669" } }),
+            m.jsx("h3", { style: { fontSize: "16px", fontWeight: 700, color: "#111827", margin: 0 }, children: "Please Review Before Submitting" })]
+          }),
+          // Body — material entries
+          m.jsxs("div", {
+            style: { padding: "16px 20px" },
+            children: [
+              m.jsx("p", { style: { fontSize: "12px", color: "#6b7280", marginBottom: "12px" }, children: "Check the values below carefully. Click Confirm & Submit to save to the database, or Edit to make changes." }),
+              m.jsx("table", {
+                style: { width: "100%", borderCollapse: "collapse", fontSize: "13px" },
+                children: [
+                  m.jsx("thead", {
+                    children: m.jsxs("tr", {
+                      style: { backgroundColor: "#f3f4f6" },
+                      children: [
+                        m.jsx("th", { style: { textAlign: "left", padding: "6px 10px", fontSize: "10px", fontWeight: 700, color: "#6b7280", textTransform: "uppercase", borderBottom: "2px solid #e5e7eb" }, children: "#" }),
+                        m.jsx("th", { style: { textAlign: "left", padding: "6px 10px", fontSize: "10px", fontWeight: 700, color: "#6b7280", textTransform: "uppercase", borderBottom: "2px solid #e5e7eb" }, children: "Material" }),
+                        m.jsx("th", { style: { textAlign: "center", padding: "6px 10px", fontSize: "10px", fontWeight: 700, color: "#6b7280", textTransform: "uppercase", borderBottom: "2px solid #e5e7eb" }, children: "Quantity" })
+                      ]
+                    })
+                  }),
+                  m.jsx("tbody", {
+                    children: previewData.map((en, i) => m.jsxs("tr", {
+                      style: { borderBottom: "1px solid #f3f4f6" },
+                      children: [
+                        m.jsx("td", { style: { padding: "6px 10px", color: "#9ca3af", fontWeight: 700 }, children: (i + 1) }),
+                        m.jsx("td", { style: { padding: "6px 10px", color: "#374151", fontWeight: 600 }, children: en.material_name || "—" }),
+                        m.jsx("td", { style: { padding: "6px 10px", textAlign: "center", color: "#111827", fontWeight: 800, fontSize: "14px" }, children: en.quantity })
+                      ]
+                    }, i))
+                  })
+                ]
+              }),
+              m.jsxs("div", {
+                style: { marginTop: "8px", paddingTop: "8px", borderTop: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between", fontSize: "13px" },
+                children: [
+                  m.jsx("span", { style: { fontWeight: 700, color: "#6b7280" }, children: "Total Items: " + previewData.length }),
+                  m.jsxs("span", { style: { fontWeight: 800, color: "#059669" }, children: ["Total Qty: ", previewData.reduce((s, en) => s + (en.quantity || 0), 0)] })
+                ]
+              })
+            ]
+          }),
+          // Footer — Confirm + Edit buttons
+          m.jsxs("div", {
+            style: { padding: "16px 20px", borderTop: "1px solid #e5e7eb", display: "flex", gap: "8px", justifyContent: "flex-end" },
+            children: [
+              m.jsx("button", {
+                onClick: () => !submitting && setPreviewData(null),
+                disabled: submitting,
+                style: { padding: "8px 20px", fontSize: "13px", fontWeight: 600, borderRadius: "8px", border: "1px solid #d1d5db", backgroundColor: "#ffffff", color: "#374151", cursor: submitting ? "wait" : "pointer" },
+                children: "Edit"
+              }),
+              m.jsx("button", {
+                onClick: confirmSubmit,
+                disabled: submitting,
+                style: { padding: "8px 20px", fontSize: "13px", fontWeight: 700, borderRadius: "8px", border: "none", backgroundColor: submitting ? "#9ca3af" : "#059669", color: "#ffffff", cursor: submitting ? "wait" : "pointer" },
+                children: submitting ? "Submitting..." : "Confirm & Submit"
+              })
+            ]
+          })
+        ]
+      })
+    })]
+  });
+}
+
+
+// ============================================================================
+// Supervisor Material Reports — table view with material columns
+// ============================================================================
+function SupervisorMaterialReports() {
+  const { user: e } = Qn();
+  const [reports, setReports] = E.useState([]);
+  const [materials, setMaterials] = E.useState([]);
+  const [dateStr, setDateStr] = E.useState(() => new Date().toISOString().split("T")[0]);
+  const [loading, setLoading] = E.useState(!0);
+  const [copying, setCopying] = E.useState(!1);
+
+  const load = async () => {
+    setLoading(!0);
+    try {
+      const [allReports, allMaterials] = await Promise.all([
+        fetchAllMaterialReports(e.id, dateStr),
+        fetchMaterials()
+      ]);
+      setReports(allReports || []);
+      setMaterials(allMaterials || []);
+    } catch (err) {
+      console.error("Failed to load:", err);
+    } finally {
+      setLoading(!1);
+    }
+  };
+
+  E.useEffect(() => { load() }, [dateStr, e?.id]);
+
+  const getQuantity = (report, materialId) => {
+    if (!report.entries) return 0;
+    const entry = report.entries.find(en => en.material_id === materialId);
+    return entry ? (entry.quantity || 0) : 0;
+  };
+
+  const handleCopy = async () => {
+    if (!reports.length) { ui.error("No reports to copy"); return; }
+    setCopying(!0);
+    try {
+      const lines = ["Material Reports — " + dateStr, ""];
+      lines.push("Officer | " + materials.map(m => m.name).join(" | ") + " | Total");
+      reports.forEach(r => {
+        const total = materials.reduce((sum, m) => sum + getQuantity(r, m.id), 0);
+        lines.push((r.officer_name || "Unknown") + " | " + materials.map(m => getQuantity(r, m.id)).join(" | ") + " | " + total);
+      });
+      const ok = await copyReportToClipboard(lines.join("\n"));
+      ok ? ui.success("Copied to clipboard") : ui.info("Copy failed");
+    } catch { ui.error("Failed to copy"); }
+    finally { setCopying(!1); }
+  };
+
+  return m.jsxs("div", {
+    className: "space-y-5",
+    children: [m.jsxs("div", {
+      children: [m.jsxs("h1", {
+        className: "text-xl font-extrabold text-gray-800 flex items-center gap-2",
+        children: [m.jsx(ao, { className: "text-emerald-600", size: 22 }), "Material Reports"]
+      }), m.jsx("p", {
+        className: "text-xs text-gray-400 mt-1",
+        children: "Daily material usage submitted by MOs and POs"
+      })]
+    }),
+
+    // Controls bar — date + copy
+    m.jsxs(Je, {
+      className: "p-4",
+      children: [m.jsxs("div", {
+        className: "flex flex-wrap items-end gap-3 justify-between",
+        children: [m.jsxs("div", {
+          className: "flex flex-col gap-1",
+          children: [m.jsx(Qe, { className: "text-[10px] font-bold text-gray-400 uppercase", children: "Date" }),
+          m.jsx(yt, { type: "date", value: dateStr, onChange: t => setDateStr(t.target.value), className: "h-9 w-40 text-xs" })]
+        }), m.jsxs("div", {
+          className: "flex items-center gap-2",
+          children: [m.jsxs("span", { className: "text-[10px] text-gray-400 font-bold uppercase", children: [reports.length, " reports"] }),
+          reports.length > 0 && m.jsxs(ht, {
+            size: "sm", variant: "outline", onClick: handleCopy, disabled: copying,
+            className: "text-xs border-blue-200 text-blue-600 hover:bg-blue-50",
+            children: [m.jsx(cp2, { size: 12, className: "mr-1" }), copying ? "Copying..." : "Copy"]
+          })]
+        })]
+      })]
+    }),
+
+    // Table with material columns
+    m.jsxs(Je, {
+      className: "p-5",
+      children: [m.jsxs("h3", {
+        className: "text-sm font-bold text-gray-800 mb-4 flex items-center gap-2",
+        children: [m.jsx(ao, { className: "text-emerald-500", size: 16 }), "All Reports — ", dateStr]
+      }), loading ? m.jsx("div", {
+        className: "space-y-2",
+        children: Array.from({ length: 5 }).map((_, i) => m.jsx(Zn, { className: "h-12" }, i))
+      }) : reports.length === 0 ? m.jsx("p", {
+        className: "text-sm text-gray-400 text-center py-8",
+        children: "No material reports submitted on this date"
+      }) : m.jsx("div", {
+        className: "overflow-x-auto",
+        children: m.jsxs("table", {
+          className: "w-full text-sm",
+          children: [m.jsx("thead", {
+            children: m.jsxs("tr", {
+              className: "border-b border-gray-200 text-left",
+              children: [
+                m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Officer" }),
+                m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Market" }),
+                m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase", children: "Region" }),
+                ...materials.map(mat => m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase text-center", children: mat.name }, mat.id)),
+                m.jsx("th", { className: "py-2 px-3 text-[10px] font-bold text-gray-400 uppercase text-center", children: "Total" })
+              ]
+            })
+          }), m.jsx("tbody", {
+            children: reports.map(r => {
+              const total = materials.reduce((sum, m) => sum + getQuantity(r, m.id), 0);
+              return m.jsxs("tr", {
+                className: "border-b border-gray-100 hover:bg-gray-50",
+                children: [
+                  m.jsx("td", { className: "py-2.5 px-3 text-gray-700 font-semibold", children: r.officer_name || "Unknown" }),
+                  m.jsx("td", { className: "py-2.5 px-3 text-[11px] text-gray-500", children: r.market_name || "—" }),
+                  m.jsx("td", { className: "py-2.5 px-3 text-[11px] text-gray-500", children: r.market_region || "—" }),
+                  ...materials.map(mat => m.jsx("td", { className: "py-2.5 px-3 text-center font-mono text-xs", children: getQuantity(r, mat.id) || "—" }, mat.id)),
+                  m.jsx("td", { className: "py-2.5 px-3 text-center font-extrabold text-emerald-600", children: total || "—" })
+                ]
+              }, r.id);
+            })
+          })]
+        })
+      })]
+    })]
+  });
+}
+
 const PO_FORM_FIELDS = [
   { key: "brand_new_stock", label: "Brand New Stock" },
   { key: "repaired_stock", label: "Repaired Stock" },
@@ -63475,6 +64104,9 @@ function Vz() {
               }), m.jsx(Lt, {
                 path: "cos-reasons",
                 element: m.jsx(COSReasonsManager, {})
+              }), m.jsx(Lt, {
+                path: "materials",
+                element: m.jsx(MaterialManager, {})
               })]
             })
           })
@@ -63501,6 +64133,9 @@ function Vz() {
               }), m.jsx(Lt, {
                 path: "router-applications",
                 element: m.jsx(SupervisorRouterApplicationsTable, {})
+              }), m.jsx(Lt, {
+                path: "material-reports",
+                element: m.jsx(SupervisorMaterialReports, {})
               }), m.jsx(Lt, {
                 path: "verify-reports",
                 element: m.jsx(ReportVerificationPage, {})
@@ -63574,6 +64209,9 @@ function Vz() {
                 path: "router-applications",
                 element: m.jsx(SupervisorRouterApplicationsTable, {})
               }), m.jsx(Lt, {
+                path: "material-reports",
+                element: m.jsx(SupervisorMaterialReports, {})
+              }), m.jsx(Lt, {
                 path: "verify-reports",
                 element: m.jsx(ReportVerificationPage, {})
               })]
@@ -63602,6 +64240,12 @@ function Vz() {
           element: m.jsx(il, {
             role: "mo",
             children: m.jsx(RouterApplicationPage, {})
+          })
+        }), m.jsx(Lt, {
+          path: "/mo/material-report",
+          element: m.jsx(il, {
+            role: "mo",
+            children: m.jsx(MaterialReportPage, {})
           })
         }), m.jsx(Lt, {
           path: "/ms/report",
@@ -63638,6 +64282,12 @@ function Vz() {
           element: m.jsx(il, {
             role: "po",
             children: m.jsx(RouterApplicationPage, {})
+          })
+        }), m.jsx(Lt, {
+          path: "/po/material-report",
+          element: m.jsx(il, {
+            role: "po",
+            children: m.jsx(MaterialReportPage, {})
           })
         }), m.jsx(Lt, {
           path: "*",
