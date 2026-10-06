@@ -63035,7 +63035,7 @@ function POPreviewModal({ reports, markets, tasks, onClose, onExcel }) {
               }),
               // Body rows — alternating white / light gray
               m.jsx("tbody", {
-                children: reports.slice((histPage - 1) * histPageSize, histPage * histPageSize).map((r, idx) => {
+                children: reports.map((r, idx) => {
                   const d = r.data || {};
                   const mk = r.market || markets.find(mk => mk.id === r.market_id) || {};
                   const getPos = (key) => d[key] || { smart: 0, tpos: 0, mpos: 0, total: 0 };
