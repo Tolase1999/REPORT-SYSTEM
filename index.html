@@ -5398,6 +5398,18 @@ a.\[a\&\]\:hover\:bg-secondary\/90:hover {
 a.\[a\&\]\:hover\:text-accent-foreground:hover {
     color: hsl(var(--accent-foreground))
 }
+
+/* Hide number input spinner arrows in WebKit browsers (Chrome/Safari/Edge)
+   so the entire input width is available for displaying the entered value.
+   Firefox is handled via inline style `MozAppearance: textfield`. */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+input[type="number"] {
+    -moz-appearance: textfield;
+}
     </style>
 
     <!--
@@ -60259,7 +60271,8 @@ function ReportVerificationPage() {
         bDrafts[b.market_id] = {
           new_stock: { smart: String(d.new_stock?.smart ?? ""), tpos: String(d.new_stock?.tpos ?? ""), mpos: String(d.new_stock?.mpos ?? "") },
           normal_stock: { smart: String(repSmart + rrSmart), tpos: String(repTpos + rrTpos), mpos: String(repMpos + rrMpos) },
-          faulty: { smart: String(d.faulty?.smart ?? ""), tpos: String(d.faulty?.tpos ?? ""), mpos: String(d.faulty?.mpos ?? "") }
+          faulty: { smart: String(d.faulty?.smart ?? ""), tpos: String(d.faulty?.tpos ?? ""), mpos: String(d.faulty?.mpos ?? "") },
+          new01: { smart: String(d.new01?.smart ?? ""), tpos: String(d.new01?.tpos ?? ""), mpos: String(d.new01?.mpos ?? "") }
         };
       });
       setBaselineDrafts(bDrafts);
@@ -60291,7 +60304,8 @@ function ReportVerificationPage() {
       const existing = prev[marketId] || {
         new_stock: { smart: "", tpos: "", mpos: "" },
         normal_stock: { smart: "", tpos: "", mpos: "" },
-        faulty: { smart: "", tpos: "", mpos: "" }
+        faulty: { smart: "", tpos: "", mpos: "" },
+        new01: { smart: "", tpos: "", mpos: "" }
       };
       return {
         ...prev,
@@ -60306,14 +60320,13 @@ function ReportVerificationPage() {
   const handleSaveBaseline = async (marketId) => {
     const draft = baselineDrafts[marketId] || {};
     const toNum = v => { const n = parseInt(v, 10); return isNaN(n) ? 0 : n; };
-    // normal_stock = Repaired + R&R combined. Store under repaired_stock,
-    // and set rr_stock to zeros (the SQL RPC adds them together for totals).
     const normalStock = draft.normal_stock || { smart: 0, tpos: 0, mpos: 0 };
     const baselineData = {
       new_stock: { smart: toNum(draft.new_stock?.smart), tpos: toNum(draft.new_stock?.tpos), mpos: toNum(draft.new_stock?.mpos) },
       repaired_stock: { smart: toNum(normalStock.smart), tpos: toNum(normalStock.tpos), mpos: toNum(normalStock.mpos) },
       rr_stock: { smart: 0, tpos: 0, mpos: 0 },
-      faulty: { smart: toNum(draft.faulty?.smart), tpos: toNum(draft.faulty?.tpos), mpos: toNum(draft.faulty?.mpos) }
+      faulty: { smart: toNum(draft.faulty?.smart), tpos: toNum(draft.faulty?.tpos), mpos: toNum(draft.faulty?.mpos) },
+      new01: { smart: toNum(draft.new01?.smart), tpos: toNum(draft.new01?.tpos), mpos: toNum(draft.new01?.mpos) }
     };
     setSavingBaseline(prev => ({ ...prev, [marketId]: !0 }));
     try {
@@ -60470,14 +60483,22 @@ function ReportVerificationPage() {
       tpos: (a.tpos || 0) + (b.tpos || 0),
       mpos: (a.mpos || 0) + (b.mpos || 0)
     });
+    // NEW01 task UUID (label "NEW01 IN STOCK", type "number", team "MO_PO")
+    const NEW01_UUID = "c7595ad1-2399-4c42-baa5-cc58b8149138";
+    // Read NEW01 from report data — stored as a plain number under custom[UUID]
+    const readNew01 = (data) => {
+      const raw = (data.custom && data.custom[NEW01_UUID]) || data[NEW01_UUID];
+      const num = Number(raw) || 0;
+      // NEW01 is a number type — store as smart, with tpos/mpos = 0
+      return { smart: num, tpos: 0, mpos: 0 };
+    };
+
     let sub;
     if (isMO) {
       const rep = findMOStockByLabel(rd, tasks, /rep.*stock|repaired.*stock|stock.*rep/i, "stock_rep");
       const rr = findMOStockByLabel(rd, tasks, /(?:r&r|rr)\s*stock|stock\s*(?:rr|r&r)/i, "stock_rr");
       const newStock = findMOStockByLabel(rd, tasks, /new\s*stock|brand\s*new/i, "stock_new");
       // KA stock (label "KA STOCK IN OFFICE", UUID fb589c57-...).
-      // For MO reports it may be stored under data.custom[KA_UUID] as a NUMBER,
-      // or as a {smart,tpos,mpos} object. Handle both cases.
       const KA_UUID = "fb589c57-cd00-4c24-b440-a0dbc94c8fdf";
       const kaRaw = (rd.custom && rd.custom[KA_UUID]) || rd[KA_UUID];
       let kaStock;
@@ -60486,34 +60507,33 @@ function ReportVerificationPage() {
       } else if (kaRaw && typeof kaRaw === "object") {
         kaStock = norm(kaRaw);
       } else {
-        // Fall back to label-based search (handles task.key variants)
         kaStock = findMOStockByLabel(rd, tasks, /ka\s*stock/i, "stock_ka");
       }
       sub = {
         new_stock: merge(newStock, kaStock),  // Brand New + KA combined
         normal_stock: merge(rep, rr),  // Repaired + R&R combined
-        faulty: findMOStockByLabel(rd, tasks, /faulty/i, "faulty")
+        faulty: findMOStockByLabel(rd, tasks, /faulty/i, "faulty"),
+        new01: readNew01(rd)  // NEW01 from custom task
       };
     } else {
-      // PO reports: KA stock is stored under data.custom[KA_UUID] as a NUMBER
-      // (not a {smart,tpos,mpos} object). Add it to the smart field of New Stock.
       const KA_UUID = "fb589c57-cd00-4c24-b440-a0dbc94c8fdf";
       const kaRaw = (rd.custom && rd.custom[KA_UUID]) || rd[KA_UUID];
       const kaNum = Number(kaRaw) || 0;
       const kaStock = { smart: kaNum, tpos: 0, mpos: 0 };
       const newStock = norm(rd.brand_new_stock);
       sub = {
-        new_stock: merge(newStock, kaStock),  // Brand New + KA combined (KA added to smart)
-        normal_stock: merge(norm(rd.repaired_stock), norm(rd.rr_stock)),  // Repaired + R&R combined
-        faulty: norm(rd.total_faulty)
+        new_stock: merge(newStock, kaStock),
+        normal_stock: merge(norm(rd.repaired_stock), norm(rd.rr_stock)),
+        faulty: norm(rd.total_faulty),
+        new01: readNew01(rd)  // NEW01 from custom task
       };
     }
-    // Baseline (POSP Stock) — KA is NOT entered separately by supervisor,
-    // so baseline new_stock stays as-is (supervisor's New Stock covers it)
+    // Baseline (POSP Stock)
     const base = {
       new_stock: norm(bd.new_stock),
-      normal_stock: merge(norm(bd.repaired_stock), norm(bd.rr_stock)),  // Repaired + R&R combined
-      faulty: norm(bd.faulty)
+      normal_stock: merge(norm(bd.repaired_stock), norm(bd.rr_stock)),
+      faulty: norm(bd.faulty),
+      new01: norm(bd.new01)  // NEW01 baseline
     };
     return { submitted: sub, baseline: base };
   };
@@ -60533,7 +60553,7 @@ function ReportVerificationPage() {
   const isRowMismatch = (row) => {
     if (!row.baseline_exists) return false;
     const { submitted, baseline } = extractMatchBreakdown(row);
-    const stockKeys = ["new_stock", "normal_stock", "faulty"];
+    const stockKeys = ["new_stock", "normal_stock", "faulty", "new01"];
     const fieldKeys = ["smart", "tpos", "mpos"];
     for (const st of stockKeys) {
       for (const f of fieldKeys) {
@@ -60549,7 +60569,8 @@ function ReportVerificationPage() {
     const stockTypes = [
       { key: "new_stock", label: "New" },
       { key: "normal_stock", label: "Normal" },
-      { key: "faulty", label: "Faulty" }
+      { key: "faulty", label: "Faulty" },
+      { key: "new01", label: "NEW01" }
     ];
     const fields = [
       { key: "smart", label: "SMART" },
@@ -60583,46 +60604,73 @@ function ReportVerificationPage() {
     return { total: enrichedMatches.length, mo: moRows.length, po: poRows.length, matched, mismatch, noBaseline, baselines: baselines.length };
   }, [enrichedMatches, baselines]);
 
-  // === POSP Stock entry card — 3 stock types (New, Normal=Repaired+R&R, Faulty) ===
+  // === POSP Stock entry card — 4 stock types (New, Normal=Repaired+R&R, Faulty, NEW01) ===
   const renderBaselineCard = (mk) => {
     const marketId = mk.id;
     const draft = baselineDrafts[marketId] || {
       new_stock: { smart: "", tpos: "", mpos: "" },
       normal_stock: { smart: "", tpos: "", mpos: "" },
-      faulty: { smart: "", tpos: "", mpos: "" }
+      faulty: { smart: "", tpos: "", mpos: "" },
+      new01: { smart: "", tpos: "", mpos: "" }
     };
     const existing = baselinesByMarket.get(marketId);
 
     // Helper: render one stock type section with Smart/TPOS/MPOS inputs
+    // Inputs auto-grow based on the number of digits typed (using `ch` units),
+    // so the entered value is always fully visible.
     const renderStockSection = (stockType, label, themeColor) => {
       const d = draft[stockType] || { smart: "", tpos: "", mpos: "" };
       const total = (parseInt(d.smart, 10) || 0) + (parseInt(d.tpos, 10) || 0) + (parseInt(d.mpos, 10) || 0);
       return m.jsxs("div", {
-        style: { borderRadius: "10px", overflow: "hidden", border: `2px solid ${themeColor.border}` },
+        style: { borderRadius: "10px", overflow: "hidden", border: `2px solid ${themeColor.border}`, backgroundColor: "#ffffff" },
         children: [
           m.jsxs("div", {
-            style: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 10px", backgroundColor: themeColor.headerBg },
+            style: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", backgroundColor: themeColor.headerBg },
             children: [
-              m.jsx("span", { style: { fontSize: "10px", fontWeight: 700, color: "#ffffff", textTransform: "uppercase", letterSpacing: "0.04em" }, children: label }),
-              m.jsx("span", { style: { fontSize: "10px", fontWeight: 800, color: "#ffffff", backgroundColor: "rgba(0,0,0,0.25)", borderRadius: "4px", padding: "1px 6px" }, children: total })
+              m.jsx("span", { style: { fontSize: "11px", fontWeight: 700, color: "#ffffff", textTransform: "uppercase", letterSpacing: "0.04em" }, children: label }),
+              m.jsx("span", { style: { fontSize: "12px", fontWeight: 800, color: "#ffffff", backgroundColor: "rgba(0,0,0,0.25)", borderRadius: "6px", padding: "2px 10px", minWidth: "30px", textAlign: "center" }, children: total })
             ]
           }),
           m.jsx("div", {
-            style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", backgroundColor: themeColor.lightBg },
-            children: ["smart", "tpos", "mpos"].map((field, i) => m.jsxs("div", {
-              style: { padding: "4px 6px", borderRight: i < 2 ? "1px solid rgba(0,0,0,0.06)" : "none" },
-              children: [
-                m.jsx("label", { style: { fontSize: "8px", fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", display: "block", textAlign: "center" }, children: field }),
-                m.jsx("input", {
-                  type: "number",
-                  min: "0",
-                  value: d[field],
-                  onChange: t => updateBaselineDraft(marketId, stockType, field, t.target.value),
-                  placeholder: "0",
-                  style: { width: "100%", height: "28px", textAlign: "center", fontSize: "13px", fontWeight: 700, color: "#374151", border: "1px solid #e5e7eb", borderRadius: "4px", backgroundColor: "#ffffff", padding: "0 4px" }
-                })
-              ]
-            }, field))
+            // Flex + wrap layout: each input is sized by its own content (auto-grow),
+            // and wraps to a new line if all three together exceed the card width.
+            style: { display: "flex", justifyContent: "center", alignItems: "stretch", gap: "10px", backgroundColor: themeColor.lightBg, padding: "12px 8px", flexWrap: "wrap" },
+            children: ["smart", "tpos", "mpos"].map((field, i) => {
+              const valStr = String(d[field] ?? "");
+              // 1ch per digit + 2ch breathing room; minimum 3ch so empty input still shows "0" placeholder clearly.
+              const chCount = Math.max(3, valStr.length + 2);
+              return m.jsxs("div", {
+                style: { display: "flex", flexDirection: "column", alignItems: "center", gap: "5px" },
+                children: [
+                  m.jsx("label", { style: { fontSize: "10px", fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em" }, children: field }),
+                  m.jsx("input", {
+                    type: "number",
+                    min: "0",
+                    value: d[field],
+                    onChange: t => updateBaselineDraft(marketId, stockType, field, t.target.value),
+                    placeholder: "0",
+                    style: {
+                      // Auto-grow width based on the number of digits typed.
+                      // Each character takes ~1ch; +16px for inner padding so digits aren't clipped.
+                      width: `calc(${chCount}ch + 16px)`,
+                      minWidth: "60px",       // never smaller than this, even when empty
+                      height: "38px",         // taller box for clear digits
+                      textAlign: "center",
+                      fontSize: "16px",       // larger font — digits are clearly readable
+                      fontWeight: 700,
+                      color: "#111827",
+                      border: `1.5px solid ${themeColor.border}`,
+                      borderRadius: "6px",
+                      backgroundColor: "#ffffff",
+                      padding: "0 8px",
+                      outline: "none",
+                      transition: "width 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease",
+                      MozAppearance: "textfield"  // hide spinner in Firefox
+                    }
+                  })
+                ]
+              }, field);
+            })
           })
         ]
       });
@@ -60649,11 +60697,12 @@ function ReportVerificationPage() {
         }),
         // 3 stock type sections (New, Normal=Repaired+R&R, Faulty)
         m.jsx("div", {
-          className: "grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4",
+          className: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4",
           children: [
             renderStockSection("new_stock", "New Stock", themes.purple),
             renderStockSection("normal_stock", "Normal (Rep+R&R)", themes.blue),
-            renderStockSection("faulty", "Faulty", themes.red)
+            renderStockSection("faulty", "Faulty", themes.red),
+            renderStockSection("new01", "NEW01", themes.purple)
           ]
         }),
         m.jsx("div", {
@@ -60694,7 +60743,7 @@ function ReportVerificationPage() {
 
     // Compute match status from the breakdown (Smart/TPOS/MPOS per stock type)
     // This ensures the badge matches what the table shows
-    const stockKeys = ["new_stock", "normal_stock", "faulty"];
+    const stockKeys = ["new_stock", "normal_stock", "faulty", "new01"];
     const fieldKeys = ["smart", "tpos", "mpos"];
     let allMatch = !noBaseline;
     if (!noBaseline) {
@@ -60715,11 +60764,12 @@ function ReportVerificationPage() {
     const badgeFg = isMatched ? "#15803d" : isMismatch ? "#b91c1c" : "#b45309";
     const badgeLabel = isMatched ? "Fully Matched" : isMismatch ? "Mismatch" : "No POSP Stock";
 
-    // Build table rows: 3 stock types × 3 fields = 9 rows
+    // Build table rows: 4 stock types × 3 fields = 12 rows
     const stockTypes = [
       { key: "new_stock", label: "New Stock" },
       { key: "normal_stock", label: "Normal Stock (Rep+R&R)" },
-      { key: "faulty", label: "Faulty" }
+      { key: "faulty", label: "Faulty" },
+      { key: "new01", label: "NEW01" }
     ];
     const fields = [
       { key: "smart", label: "Smart" },
